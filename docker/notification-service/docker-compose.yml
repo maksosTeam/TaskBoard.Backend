@@ -7,7 +7,7 @@ services:
     ports:
       - "32181:2181"
     networks:
-      - swaga-network
+      - taskboard-network
 
   notification-kafka:
     container_name: notification-kafka
@@ -21,7 +21,7 @@ services:
     depends_on:
       - notification-zookeeper
     networks:
-      - swaga-network
+      - taskboard-network
 
   notification-service:
     container_name: taskboard-notification-serv
@@ -39,8 +39,8 @@ services:
       notification-db:
         condition: service_healthy
     networks:
-      - swaga-network
+      - taskboard-network
 
 
 networks:
-  swaga-network:
+  taskboard-network:
