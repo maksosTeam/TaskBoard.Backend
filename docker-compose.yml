@@ -8,7 +8,7 @@ include:
 networks:
   swaga-network:
     driver: bridge
-    name: swaga-network
+    name: taskboard-network
 
 services:
   db_init:
@@ -25,5 +25,5 @@ services:
     volumes:
       - ./migrations/init-fdw.sh:/docker-entrypoint-initdb.d/init-fdw.sh
     networks:
-      - swaga-network
+      - taskboard-network
     entrypoint: ["docker-entrypoint.sh", "postgres"]
