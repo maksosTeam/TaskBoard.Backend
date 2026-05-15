@@ -20,7 +20,6 @@ public class GithubController : ControllerBase
         [FromHeader(Name = "X-GitHub-Event")] string gitHubEvent,
         [FromBody] GitHubWebhookPayload payload)
     {
-        // Оставляем валидацию самого HTTP-события на уровне контроллера
         if (gitHubEvent != "pull_request")
         {
             return Ok("Event ignored"); 
@@ -31,18 +30,14 @@ public class GithubController : ControllerBase
             return BadRequest("Invalid payload: PullRequest data is missing");
         }
 
-        // Передаем обработку на уровень приложения
-        bool isProcessed = await _webhookService.ProcessPullRequestAsync(
+        var isProcessed = await _webhookService.ProcessPullRequestAsync(
             payload.Action,
             payload.PullRequest.Title,
             payload.PullRequest.HtmlUrl
         );
 
-        if (isProcessed)
-        {
-            return Ok("Webhook processed and task updated.");
-        }
-
-        return Ok("Webhook received, but no actions performed (either ignored action or no task key found).");
+        return Ok(isProcessed
+            ? "Webhook processed and task updated." 
+            : "Webhook received, but no actions performed (either ignored action or no task key found).");
     }
 }

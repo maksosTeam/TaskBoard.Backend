@@ -84,7 +84,6 @@ public class ItemManager(
         return models;
     }
 
-
     public async Task<ItemModel> GetByIdAsync(int? id)
     {
         if (id is null) throw new ArgumentNullException(nameof(id));

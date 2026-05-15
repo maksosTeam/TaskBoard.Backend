@@ -1,6 +1,5 @@
 ﻿using ProjectService.BusinessLayer.Abstractions;
 using ProjectService.DataLayer.Repositories.Abstractions;
-using ProjectService.Exceptions;
 using ProjectService.Mapper;
 using ProjectService.Models;
 using SharedLibrary.Auth;
@@ -55,7 +54,7 @@ public class StatusManager(IStatusRepository statusRepository, IAuth auth, IProj
     {
         await statusRepository.DeleteAsync(id);
     }
-
+    
     public async Task ChangeStatusOrderAsync(UpdateOrderModel updateOrderModel)
     {
         var statusToMove = await statusRepository.GetByIdAsync(updateOrderModel.StatusId);
