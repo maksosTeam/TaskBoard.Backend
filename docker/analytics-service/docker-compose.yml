@@ -1,6 +1,6 @@
 services:
   analytics-service:
-    image: ghcr.io/maksosTeam/analytics-service:1.0.3
+    image: ghcr.io/maksosteam/analytics-service:1.0.3
     container_name: taskboard-analytics-serv
     env_file:
       - ./.env
