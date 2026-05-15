@@ -1,11 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml.Linq;
-
-namespace SharedLibrary.Entities.ProjectService
+﻿namespace SharedLibrary.Entities.ProjectService
 {
     public class ItemEntity
     {
@@ -25,6 +18,7 @@ namespace SharedLibrary.Entities.ProjectService
         public int? ItemTypeId { get; set; }
         public int? StatusId { get; set; }
         public bool IsArchived { get; set; }
+        public string MergeLink { get; set; }
 
         public ItemEntity Parent { get; set; }
         public ICollection<ItemEntity> Children { get; set; }

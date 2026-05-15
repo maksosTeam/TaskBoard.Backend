@@ -32,7 +32,8 @@ public static class ItemMapper
             IsArchived = item.IsArchived,
             UserItems = item.UserItems != null 
                 ? item.UserItems.Select(UserItemMapper.ToEntity).ToList() 
-                : new List<UserItemEntity>()
+                : new List<UserItemEntity>(),
+            MergeLink = item.MergeLink
         };
     }
 
@@ -59,7 +60,8 @@ public static class ItemMapper
             StatusId = item.StatusId,
             IsArchived = item.IsArchived,
             Status = StatusMapper.ToModel(item.Status),
-            UserItems = item.UserItems.Select(UserItemMapper.ToModel).ToList()
+            UserItems = item.UserItems.Select(UserItemMapper.ToModel).ToList(),
+            MergeLink = item.MergeLink
         };
 
         if(item.ItemsBoards.Count > 0)
@@ -69,7 +71,7 @@ public static class ItemMapper
             model.SetBoardId(boardId);
         }
 
-        if(item.UserItems != null && item.UserItems.Count > 0)
+        if (item.UserItems != null && item.UserItems.Count > 0)
         {
             foreach (var userItem in item.UserItems)
             {
