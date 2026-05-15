@@ -6,7 +6,7 @@ include:
   - docker/kafka/docker-compose.yml
 
 networks:
-  swaga-network:
+  taskboard-network:
     driver: bridge
     name: taskboard-network
 
