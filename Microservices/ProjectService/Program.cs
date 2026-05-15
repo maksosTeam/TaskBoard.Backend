@@ -44,7 +44,6 @@ internal class Program
 
         app.UseCors("AllowApiGateway");
 
-        // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
         {
             app.UseSwagger();
@@ -126,7 +125,7 @@ internal class Program
         {
             options.AddPolicy("AllowApiGateway", policy =>
             {
-                policy.WithOrigins(Environment.GetEnvironmentVariable("GATEWAY")!)  // ����� ��������� ����� ApiGateway
+                policy.WithOrigins(Environment.GetEnvironmentVariable("GATEWAY")!)
                       .AllowAnyMethod()
                       .AllowAnyHeader();
             });
@@ -140,7 +139,7 @@ internal class Program
         {
             options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
-                Description = "������� 'Bearer' [������] ��� �����������",
+                Description = "Вставьте Bearer",
                 Name = "Authorization",
                 In = ParameterLocation.Header,
                 Type = SecuritySchemeType.ApiKey
