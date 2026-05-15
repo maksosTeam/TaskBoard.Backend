@@ -15,6 +15,7 @@ using ProjectService.DataLayer;
 using ProjectService.DataLayer.Repositories.Abstractions;
 using ProjectService.DataLayer.Repositories.Implementations;
 using ProjectService.Initializers;
+using ProjectService.Services;
 using SharedLibrary.Auth;
 using SharedLibrary.Dapper.DapperRepositories;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
@@ -86,6 +87,7 @@ internal class Program
         services.AddScoped<IMailService, MailService>();
         services.AddScoped<IBoardManager, BoardManager>();
         services.AddScoped<IProjectLinkManager, ProjectLinkManager>();
+        services.AddScoped<IGitHubWebhookService, GitHubWebhookService>();    
         services.AddHttpClient<IItemManager, ItemManager>
             (client => client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("ANALYTICS_SERVICE") + "/analytics/"))
             .AddHttpMessageHandler<ForwardAccessTokenHandler>();
