@@ -3,6 +3,7 @@ using ProjectService.DataLayer.Repositories.Abstractions;
 using ProjectService.Exceptions;
 using ProjectService.Mapper;
 using SharedLibrary.Auth;
+using SharedLibrary.Constants;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.Entities.ProjectService;
 using SharedLibrary.Models;
@@ -18,37 +19,9 @@ public class BoardManager(IBoardRepository boardRepository, IAuth auth, IProject
 
         var boardEntity = BoardMapper.ToEntity(board);
 
-        boardEntity.Statuses =
-        [
-            new StatusEntity
-            {
-                Name = "В очереди",
-                IsDone = false,
-                IsRejected = false,
-                Order = 0
-            },
-            new StatusEntity
-            {
-                Name = "На исполнении",
-                IsDone = false,
-                IsRejected = false,
-                Order = 1
-            },
-            new StatusEntity
-            {
-                Name = "Готово",
-                IsDone = true,
-                IsRejected = false,
-                Order = 2
-            },
-            new StatusEntity
-            {
-                Name = "Отклонено",
-                IsDone = false,
-                IsRejected = true,
-                Order = 3
-            }
-        ];
+        boardEntity.Statuses = Enum.GetValues<StatusEnum>()
+            .Select(status => status.ToEntity())
+            .ToList();
 
         board.CreatedAt = DateTime.UtcNow;
 
