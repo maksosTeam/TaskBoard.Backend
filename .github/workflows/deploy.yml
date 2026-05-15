@@ -20,23 +20,23 @@ jobs:
 
     - name: Build and push user-service
       run: |
-        docker build -t ghcr.io/swagateam/user-service:1.0.3 -f ./docker/user-service/Dockerfile .
-        docker push ghcr.io/swagateam/user-service:1.0.3
+        docker build -t ghcr.io/maksosTeam/user-service:1.0.3 -f ./docker/user-service/Dockerfile .
+        docker push ghcr.io/maksosTeam/user-service:1.0.3
     
     - name: Build and push gateway-service
       run: |
-        docker build -t ghcr.io/swagateam/gateway-service:1.0.5 -f ./docker/gateway-service/Dockerfile .
-        docker push ghcr.io/swagateam/gateway-service:1.0.5
+        docker build -t ghcr.io/maksosTeam/gateway-service:1.0.5 -f ./docker/gateway-service/Dockerfile .
+        docker push ghcr.io/maksosTeam/gateway-service:1.0.5
     
     - name: Build and push project-service
       run: |
-        docker build -t ghcr.io/swagateam/project-service:1.0.4 -f ./docker/project-service/Dockerfile .
-        docker push ghcr.io/swagateam/project-service:1.0.4
+        docker build -t ghcr.io/maksosTeam/project-service:1.0.4 -f ./docker/project-service/Dockerfile .
+        docker push ghcr.io/maksosTeam/project-service:1.0.4
     
     - name: Build and push analytics-service
       run: |
-        docker build -t ghcr.io/swagateam/analytics-service:1.0.3 -f ./docker/analytics-service/Dockerfile .
-        docker push ghcr.io/swagateam/analytics-service:1.0.3
+        docker build -t ghcr.io/maksosTeam/analytics-service:1.0.3 -f ./docker/analytics-service/Dockerfile .
+        docker push ghcr.io/maksosTeam/analytics-service:1.0.3
 
   deploy:
         needs: publish
