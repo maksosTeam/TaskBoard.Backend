@@ -454,7 +454,5 @@ nunit-*.xml
 # JetBrains Rider
 *.sln.iml
 
-*.env
-
 .sonarqube/
 .idea/
