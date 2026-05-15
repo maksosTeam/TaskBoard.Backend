@@ -1,0 +1,46 @@
+services:
+  notification-zookeeper:
+    container_name: notification-zookeeper
+    image: bitnami/zookeeper:latest
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    ports:
+      - "32181:2181"
+    networks:
+      - swaga-network
+
+  notification-kafka:
+    container_name: notification-kafka
+    image: bitnami/kafka:latest
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=notification-zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    ports:
+      - "39092:9092"
+    depends_on:
+      - notification-zookeeper
+    networks:
+      - swaga-network
+
+  notification-service:
+    container_name: taskboard-notification-serv
+    build:
+      context: .
+      dockerfile: docker/notification-service/Dockerfile
+    environment:
+      - ASPNETCORE_URLS=http://+:8084
+      - ASPNETCORE_HOSTINGSTARTUPASSEMBLIES=Microsoft.AspNetCore.SpaProxy
+      - DOTNET_RUNNING_IN_CONTAINER=true
+    volumes:
+      - ${HOME}/.microsoft/usersecrets:/root/.microsoft/usersecrets
+    restart: always
+    depends_on:
+      notification-db:
+        condition: service_healthy
+    networks:
+      - swaga-network
+
+
+networks:
+  swaga-network:
