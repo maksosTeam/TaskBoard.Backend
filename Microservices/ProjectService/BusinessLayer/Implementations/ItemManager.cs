@@ -29,8 +29,6 @@ public class ItemManager(
     HttpClient httpClient,
     IAuth auth) : IItemManager
 {
-    #region Вспомогательные методы пакетной загрузки (Победа над N+1)
-
     private async Task<ItemModel> EnrichItemAsync(ItemEntity entity)
     {
         var userIds = new HashSet<int>();
@@ -81,8 +79,6 @@ public class ItemManager(
 
         return entityList.Select(x => ItemMapper.ToModel(x, cache)!).ToList();
     }
-
-    #endregion
 
     public async Task<int> CreateAsync(CreateItemModel createItemModel, CancellationToken token)
     {
