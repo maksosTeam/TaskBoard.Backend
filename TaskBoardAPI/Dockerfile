@@ -7,7 +7,7 @@ EXPOSE 8080
 EXPOSE 8081
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-ARG BUILD_CONFIGURATION=Release
+ARG BUILD_CONFIGURATION=Development
 WORKDIR /src
 COPY ["TaskBoardAPI/TaskBoardAPI.csproj", "TaskBoardAPI/"]
 RUN dotnet restore "./TaskBoardAPI/TaskBoardAPI.csproj"
@@ -16,7 +16,7 @@ WORKDIR "/src/TaskBoardAPI"
 RUN dotnet build "./TaskBoardAPI.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
+ARG BUILD_CONFIGURATION=Development
 RUN dotnet publish "./TaskBoardAPI.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final

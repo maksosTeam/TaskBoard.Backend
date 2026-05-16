@@ -7,7 +7,7 @@ EXPOSE 8080
 EXPOSE 8081
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-ARG BUILD_CONFIGURATION=Release
+ARG BUILD_CONFIGURATION=Development
 WORKDIR /src
 COPY ["AnalyticsService/AnalyticsService.csproj", "AnalyticsService/"]
 RUN dotnet restore "./AnalyticsService/AnalyticsService.csproj"
@@ -16,7 +16,7 @@ WORKDIR "/src/AnalyticsService"
 RUN dotnet build "./AnalyticsService.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
+ARG BUILD_CONFIGURATION=Development
 RUN dotnet publish "./AnalyticsService.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
