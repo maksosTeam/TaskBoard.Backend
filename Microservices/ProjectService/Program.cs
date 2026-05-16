@@ -39,21 +39,15 @@ internal class Program
         ConfigureServices(builder.Services, builder.Configuration);
 
         var app = builder.Build();
-        app.MapHub<NotificationHub>("/hub/notifications");
-
 
         using var scope = app.Services.CreateScope();
         using var appDbContext = scope.ServiceProvider.GetRequiredService<ProjectDbContext>();
         await DbContextInitializer.Migrate(appDbContext);
 
         app.UseCors("AllowApiGateway");
-        app.MapHub<NotificationHub>("/hub/notifications");
 
-        if (app.Environment.IsDevelopment())
-        {
-            app.UseSwagger();
-            app.UseSwaggerUI();
-        }
+        app.UseSwagger();
+        app.UseSwaggerUI();
 
         var documentPath = Environment.GetEnvironmentVariable("DOCUMENT_STORAGE_PATH");
         var attachmentPath = Environment.GetEnvironmentVariable("ATTACHMENT_STORAGE_PATH");
@@ -76,6 +70,7 @@ internal class Program
         app.UseAuthorization();
 
         app.MapControllers();
+        app.MapHub<NotificationHub>("/hub/notifications");
 
         await app.RunAsync();
     }
