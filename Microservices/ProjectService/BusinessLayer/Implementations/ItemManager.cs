@@ -1,7 +1,8 @@
-﻿using Kafka.Messaging.Services.Abstractions;
+﻿using Kafka.Messaging;
 using ProjectService.BusinessLayer.Abstractions;
 using ProjectService.DataLayer.Repositories.Abstractions;
 using ProjectService.Exceptions;
+using ProjectService.Kafka.Abstractions;
 using ProjectService.Mapper;
 using ProjectService.Models;
 using SharedLibrary.Auth;

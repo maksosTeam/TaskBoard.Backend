@@ -1,8 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using DotNetEnv;
-using Kafka.Messaging.Services.Abstractions;
-using Kafka.Messaging.Services.Implementations;
+using Kafka.Messaging;
 using Kafka.Messaging.Settings;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.FileProviders;
@@ -15,6 +14,8 @@ using ProjectService.DataLayer;
 using ProjectService.DataLayer.Repositories.Abstractions;
 using ProjectService.DataLayer.Repositories.Implementations;
 using ProjectService.Initializers;
+using ProjectService.Kafka.Abstractions;
+using ProjectService.Kafka.Implementations;
 using ProjectService.Services;
 using SharedLibrary.Auth;
 using SharedLibrary.Dapper.DapperRepositories;
@@ -38,12 +39,15 @@ internal class Program
         ConfigureServices(builder.Services, builder.Configuration);
 
         var app = builder.Build();
+        app.MapHub<NotificationHub>("/hub/notifications");
+
 
         using var scope = app.Services.CreateScope();
         using var appDbContext = scope.ServiceProvider.GetRequiredService<ProjectDbContext>();
         await DbContextInitializer.Migrate(appDbContext);
 
         app.UseCors("AllowApiGateway");
+        app.MapHub<NotificationHub>("/hub/notifications");
 
         if (app.Environment.IsDevelopment())
         {
