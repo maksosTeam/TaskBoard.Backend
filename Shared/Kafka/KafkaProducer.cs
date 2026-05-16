@@ -37,7 +37,7 @@ public class KafkaProducer<TMessage> : IKafkaProducer<TMessage>
             topic,
             new Message<string, TMessage>
             {
-                Key = "1",
+                Key = null,
                 Value = message
             },
             cancellationToken);
