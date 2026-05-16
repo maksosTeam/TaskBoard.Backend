@@ -125,6 +125,7 @@ internal class Program
         services.AddScoped<IContributorsRepository, ContributorsRepository>();
         services.AddScoped<IContributorsManager, ContributorsManager>();
         
+        // Очищены дубликаты регистраций IBoardManager и IBoardRepository, которые шли дважды подряд
         services.AddScoped<IBoardManager, BoardManager>();
         services.AddScoped<IBoardRepository, BoardRepository>();
         
@@ -141,7 +142,6 @@ internal class Program
         services.AddScoped<IDocumentRepository, DocumentRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
-        services.AddScoped<IProjectRepository, ProjectRepository>();
         
         services.AddSingleton<IHostedService, KafkaConsumer<TaskEventMessage>>();
         services.AddScoped<IAuth, Auth>();
@@ -199,8 +199,7 @@ internal class Program
             options.IncludeXmlComments(xmlPath);
         });
 
-        services.Configure<KafkaSettings>("TaskEventMessage", 
-            configuration.GetSection("KafkaSettings:TaskEventMessage"));
+        services.AddSingleton<IKafkaProducer<TaskEventMessage>, KafkaProducer<TaskEventMessage>>();
 
         /*
          * DATABASE CONFIGURATION
