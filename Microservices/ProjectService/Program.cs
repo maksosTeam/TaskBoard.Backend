@@ -199,7 +199,8 @@ internal class Program
             options.IncludeXmlComments(xmlPath);
         });
 
-        services.AddSingleton<IKafkaProducer<TaskEventMessage>, KafkaProducer<TaskEventMessage>>();
+        services.Configure<KafkaSettings>("TaskEventMessage", 
+            configuration.GetSection("KafkaSettings:TaskEventMessage"));
 
         /*
          * DATABASE CONFIGURATION

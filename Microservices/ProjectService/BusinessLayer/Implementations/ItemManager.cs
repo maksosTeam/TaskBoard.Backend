@@ -172,6 +172,7 @@ public class ItemManager(
             EventType = eventType,
             UserItems = item.UserItems,
             Message = message,
+            
         }, token);
 
         var model = new SharedLibrary.Models.TaskHistoryModel
