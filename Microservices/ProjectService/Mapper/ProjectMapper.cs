@@ -23,7 +23,7 @@ namespace ProjectService.Mapper
             };
         }
 
-        public static async Task<ProjectModel> ToModel(ProjectEntity projectModel, string? headUserName)
+        public static ProjectModel ToModel(ProjectEntity projectModel, string? headUserName)
         {
             var project = new ProjectModel()
             {
