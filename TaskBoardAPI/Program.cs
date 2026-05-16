@@ -32,10 +32,10 @@ internal class Program
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint(Environment.GetEnvironmentVariable("GATEWAY") + "/swagger/v1/swagger.json", "API Gateway");
-            c.SwaggerEndpoint(Environment.GetEnvironmentVariable("PROJECT_API") + "/swagger/v1/swagger.json", "Project Service");
-            c.SwaggerEndpoint(Environment.GetEnvironmentVariable("ANALYTICS_API") + "/swagger/v1/swagger.json", "Analytics Service");
-            c.SwaggerEndpoint(Environment.GetEnvironmentVariable("USER_API") + "/swagger/v1/swagger.json", "User Service");
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "API Gateway");
+            c.SwaggerEndpoint("/project/swagger/v1/swagger.json", "Project Service");
+            c.SwaggerEndpoint("/analytics/swagger/v1/swagger.json", "Analytics Service");
+            c.SwaggerEndpoint("/user/swagger/v1/swagger.json", "User Service");
         });
 
         app.MapReverseProxy();
@@ -148,14 +148,11 @@ internal class Program
                             Id = "Bearer"
                         }
                     },
-                    new string[] {}
+                    Array.Empty<string>()
                 }
             });
 
-            options.AddServer(new OpenApiServer { Url = Environment.GetEnvironmentVariable("GATEWAY"), Description = "API Gateway" });
-            options.AddServer(new OpenApiServer { Url = Environment.GetEnvironmentVariable("PROJECT_API"), Description = "Project Service" });
-            options.AddServer(new OpenApiServer { Url = Environment.GetEnvironmentVariable("ANALYTICS_API"), Description = "Analytics Service" });
-            options.AddServer(new OpenApiServer { Url = Environment.GetEnvironmentVariable("USER_API"), Description = "User Service" });
+            options.AddServer(new OpenApiServer { Url = "/", Description = "Main Gateway" });
         });
     }
 }
