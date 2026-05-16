@@ -1,4 +1,6 @@
-﻿using ProjectService.BusinessLayer.Abstractions;
+﻿using System.Data;
+using Microsoft.EntityFrameworkCore;
+using ProjectService.BusinessLayer.Abstractions;
 using ProjectService.DataLayer.Repositories.Abstractions;
 using ProjectService.Exceptions;
 using ProjectService.Mapper;
@@ -9,7 +11,6 @@ using SharedLibrary.Dapper.DapperRepositories;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.Models;
 using SharedLibrary.ProjectModels;
-using System.Data;
 
 namespace ProjectService.BusinessLayer.Implementations;
 
@@ -145,11 +146,25 @@ public class ProjectManager(IProjectRepository projectRepository, IUserProjectMa
     public async Task<ICollection<ProjectModel?>> Get()
     {
         var currentUserId = auth.GetCurrentUserId();
-        var projects = projectRepository.GetByUserId(currentUserId);
 
-        var projectModels = await Task.WhenAll(
-            projects.Select(p => ProjectMapper.ToModel(p, userRepository))
-        );
+        var projectsEntities = await projectRepository.GetByUserId(currentUserId).ToListAsync();
+
+        var projectModels = new List<ProjectModel?>();
+
+        foreach (var p in projectsEntities)
+        {
+            var headProject = p.UserProjects.FirstOrDefault(x => x.RoleId == DefaultRoles.CREATOR);
+            string? headUsername = null;
+
+            if (headProject != null)
+            {
+                var user = await userRepository.GetUserAsync(headProject.UserId);
+                headUsername = user?.Username;
+            }
+
+            var model = ProjectMapper.ToModel(p, headUsername);
+            projectModels.Add(model);
+        }
 
         return projectModels;
     }
