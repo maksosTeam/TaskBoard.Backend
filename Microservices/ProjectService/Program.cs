@@ -121,6 +121,12 @@ internal class Program
         services.AddSingleton<IBlackListService, BlackListService>();
         services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
         services.AddScoped<IMessageHandler<TaskEventMessage>, TaskEventMessageHandler>();
+        
+        services.AddSignalR(options =>
+        {
+            options.EnableDetailedErrors = true;
+            options.MaximumReceiveMessageSize = 102400;
+        });
 
         services.AddCors(options =>
         {
