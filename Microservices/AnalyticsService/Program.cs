@@ -1,19 +1,22 @@
-using AnalyticsService.Initializers;
-using DotNetEnv;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
-using SharedLibrary.Middleware;
 using System.Security.Claims;
 using System.Text;
 using AnalyticsService.BusinessLayer.Abstractions;
 using AnalyticsService.BusinessLayer.Implementations;
+using AnalyticsService.DataLayer;
 using AnalyticsService.DataLayer.Abstractions;
 using AnalyticsService.DataLayer.Implementations;
-using AnalyticsService.BusinessLayer;
-using SharedLibrary.Dapper.DapperRepositories.Abstractions;
+using AnalyticsService.Initializers;
+using AnalyticsService.Kafka;
+using AnalyticsService.Kafka.Consumers;
+using DotNetEnv;
+using Kafka.Messaging;
+using Kafka.Messaging.Contracts.Requests;
+using Kafka.Messaging.Settings;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using SharedLibrary.Dapper.DapperRepositories;
-using AnalyticsService.DataLayer;
+using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 
 namespace AnalyticsService;
 
@@ -28,12 +31,18 @@ internal class Program
 
         builder.Configuration.AddEnvironmentVariables();
 
-        ConfigureServices(builder.Services, builder.Configuration);
+        ConfigureServices(
+            builder.Services,
+            builder.Configuration);
 
         var app = builder.Build();
 
         using var scope = app.Services.CreateScope();
-        using var appDbContext = scope.ServiceProvider.GetRequiredService<AnalyticsDbContext>();
+
+        using var appDbContext =
+            scope.ServiceProvider
+                .GetRequiredService<AnalyticsDbContext>();
+
         await DbContextInitializer.Migrate(appDbContext);
 
         app.UseCors("AllowApiGateway");
@@ -43,7 +52,9 @@ internal class Program
             app.UseSwagger();
             app.UseSwaggerUI();
         }
-        
+
+        app.UseAuthentication();
+
         app.UseAuthorization();
 
         app.MapControllers();
@@ -51,103 +62,255 @@ internal class Program
         await app.RunAsync();
     }
 
-    private static void ConfigureServices(IServiceCollection services, IConfigurationManager configuration)
+    private static void ConfigureServices(
+        IServiceCollection services,
+        IConfigurationManager configuration)
     {
         services.AddCors(options =>
         {
             options.AddPolicy("AllowApiGateway", policy =>
             {
-                policy.WithOrigins(Environment.GetEnvironmentVariable("GATEWAY")!)  // ����� ��������� ����� ApiGateway
-                      .AllowAnyMethod()
-                      .AllowAnyHeader();
+                policy
+                    .WithOrigins(
+                        Environment.GetEnvironmentVariable(
+                            "GATEWAY")!)
+                    .AllowAnyMethod()
+                    .AllowAnyHeader();
             });
         });
 
         AddAuthentication(services, configuration);
 
-        services.AddHttpContextAccessor();
-        services.AddTransient<ForwardAccessTokenHandler>();
+        /*
+         * DATABASE
+         */
+
+        var host =
+            Environment.GetEnvironmentVariable("HOST");
+
+        var port =
+            Environment.GetEnvironmentVariable("PORT");
+
+        var database =
+            Environment.GetEnvironmentVariable(
+                "POSTGRES_DB");
+
+        var user =
+            Environment.GetEnvironmentVariable(
+                "USERNAME");
+
+        var pass =
+            Environment.GetEnvironmentVariable(
+                "PASSWORD");
+
+        var conn =
+            $"Host={host};" +
+            $"Port={port};" +
+            $"Database={database};" +
+            $"Username={user};" +
+            $"Password={pass}";
+
+        var userDatabase =
+            Environment.GetEnvironmentVariable(
+                "POSTGRES_USER_DB");
+
+        var userHost =
+            Environment.GetEnvironmentVariable(
+                "USER_HOST");
+
+        var userConnection =
+            $"Host={userHost};" +
+            $"Port={port};" +
+            $"Database={userDatabase};" +
+            $"Username={user};" +
+            $"Password={pass}";
+
+        services.AddScoped<IUserRepository>(provider =>
+            new UserRepository(userConnection));
+
+        DbContextInitializer.Initialize(
+            services,
+            conn);
+
+        /*
+         * BUSINESS
+         */
+
         services.AddScoped<ITaskManager, TaskManager>();
-        services.AddScoped<ITaskHistoryRepository, TaskHistoryRepository>();
-        services
-            .AddHttpClient<ITaskManager, TaskManager>(client => client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("PROJECT_SERVICE") + "/item/"))
-            .AddHttpMessageHandler<ForwardAccessTokenHandler>();
-        services
-            .AddHttpClient<IProjectManager, ProjectManager>(client =>client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("PROJECT_SERVICE")!))
-            .AddHttpMessageHandler<ForwardAccessTokenHandler>();
+
+        services.AddScoped<IProjectManager, ProjectManager>();
+
+        services.AddScoped<
+            ITaskHistoryRepository,
+            TaskHistoryRepository>();
+
+        /*
+         * KAFKA SETTINGS
+         */
+
+        services.Configure<KafkaSettings>(
+            "GetItemsByProjectRequest",
+            configuration.GetSection(
+                "KAFKA:GETITEMSBYPROJECTREQUEST"));
+
+        services.Configure<KafkaSettings>(
+            "GetItemsByProjectResponse",
+            configuration.GetSection(
+                "KAFKA:GETITEMSBYPROJECTRESPONSE"));
+
+        services.Configure<KafkaSettings>(
+            "GetItemByIdRequest",
+            configuration.GetSection(
+                "KAFKA:GETITEMBYIDREQUEST"));
+
+        services.Configure<KafkaSettings>(
+            "GetItemByIdResponse",
+            configuration.GetSection(
+                "KAFKA:GETITEMBYIDRESPONSE"));
+
+        services.Configure<KafkaSettings>(
+            "GetProjectByIdRequest",
+            configuration.GetSection(
+                "KAFKA:GETPROJECTBYIDREQUEST"));
+
+        services.Configure<KafkaSettings>(
+            "GetProjectByIdResponse",
+            configuration.GetSection(
+                "KAFKA:GETPROJECTBYIDRESPONSE"));
+
+        /*
+         * KAFKA PRODUCERS
+         */
+
+        services.AddScoped<
+            IKafkaProducer<GetItemsByProjectRequest>,
+            KafkaProducer<GetItemsByProjectRequest>>();
+
+        services.AddScoped<
+            IKafkaProducer<GetItemByIdRequest>,
+            KafkaProducer<GetItemByIdRequest>>();
+
+        services.AddScoped<
+            IKafkaProducer<GetProjectByIdRequest>,
+            KafkaProducer<GetProjectByIdRequest>>();
+
+        /*
+         * KAFKA CLIENT
+         */
+
+        services.AddScoped<ProjectKafkaClient>();
+
+        /*
+         * KAFKA CONSUMERS
+         */
+
+        services.AddHostedService<
+            GetItemsByProjectResponseConsumer>();
+
+        services.AddHostedService<
+            GetItemByIdResponseConsumer>();
+
+        services.AddHostedService<
+            GetProjectByIdResponseConsumer>();
+
+        /*
+         * API
+         */
+
         services.AddControllers();
+
         services.AddEndpointsApiExplorer();
 
         services.AddSwaggerGen(options =>
         {
-
-            options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-            {
-                Description = "������� 'Bearer' [������] ��� �����������",
-                Name = "Authorization",
-                In = ParameterLocation.Header,
-                Type = SecuritySchemeType.ApiKey
-            });
-
-            options.AddSecurityRequirement(new OpenApiSecurityRequirement
-            {
+            options.AddSecurityDefinition(
+                "Bearer",
+                new OpenApiSecurityScheme
                 {
-                    new OpenApiSecurityScheme
-                    {
-                        Reference = new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "Bearer"
-                        }
-                    },
-                    new string[] {}
-                }
-            });
+                    Description =
+                        "JWT Authorization header using Bearer scheme",
 
-            var xmlFile = $"{AppDomain.CurrentDomain.FriendlyName}.xml";
-            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+                    Name = "Authorization",
+
+                    In = ParameterLocation.Header,
+
+                    Type = SecuritySchemeType.ApiKey
+                });
+
+            options.AddSecurityRequirement(
+                new OpenApiSecurityRequirement
+                {
+                    {
+                        new OpenApiSecurityScheme
+                        {
+                            Reference =
+                                new OpenApiReference
+                                {
+                                    Type =
+                                        ReferenceType
+                                            .SecurityScheme,
+
+                                    Id = "Bearer"
+                                }
+                        },
+                        Array.Empty<string>()
+                    }
+                });
+
+            var xmlFile =
+                $"{AppDomain.CurrentDomain.FriendlyName}.xml";
+
+            var xmlPath =
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    xmlFile);
+
             options.IncludeXmlComments(xmlPath);
         });
-
-        var host = Environment.GetEnvironmentVariable("HOST");
-        var port = Environment.GetEnvironmentVariable("PORT");
-        var database = Environment.GetEnvironmentVariable("POSTGRES_DB");
-        var user = Environment.GetEnvironmentVariable("USERNAME");
-        var pass = Environment.GetEnvironmentVariable("PASSWORD");
-
-        var conn = $"Host={host};Port={port};Database={database};Username={user};Password={pass}";
-
-        var user_database = Environment.GetEnvironmentVariable("POSTGRES_USER_DB");
-        var user_host = Environment.GetEnvironmentVariable("USER_HOST");
-
-        var userConnection = $"Host={user_host};Port={port};Database={user_database};Username={user};Password={pass}";
-
-        services.AddScoped<IUserRepository>(provider => new UserRepository(userConnection));
-
-        DbContextInitializer.Initialize(services, conn);
     }
 
-    private static void AddAuthentication(IServiceCollection services, IConfigurationManager configuration)
+    private static void AddAuthentication(
+        IServiceCollection services,
+        IConfigurationManager configuration)
     {
         services
             .AddAuthentication(options =>
             {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultAuthenticateScheme =
+                    JwtBearerDefaults.AuthenticationScheme;
+
+                options.DefaultChallengeScheme =
+                    JwtBearerDefaults.AuthenticationScheme;
             })
             .AddJwtBearer(options =>
             {
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidateLifetime = true,
-                    ValidateIssuerSigningKey = true,
-                    ValidIssuer = configuration["Jwt:Issuer"],
-                    ValidAudience = configuration["Jwt:Audience"],
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("JWT_KEY")!)),
-                    RoleClaimType = ClaimTypes.Role
-                };
+                options.TokenValidationParameters =
+                    new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+
+                        ValidateAudience = true,
+
+                        ValidateLifetime = true,
+
+                        ValidateIssuerSigningKey = true,
+
+                        ValidIssuer =
+                            configuration["Jwt:Issuer"],
+
+                        ValidAudience =
+                            configuration["Jwt:Audience"],
+
+                        IssuerSigningKey =
+                            new SymmetricSecurityKey(
+                                Encoding.UTF8.GetBytes(
+                                    Environment
+                                        .GetEnvironmentVariable(
+                                            "JWT_KEY")!)),
+
+                        RoleClaimType =
+                            ClaimTypes.Role
+                    };
             });
     }
 }
