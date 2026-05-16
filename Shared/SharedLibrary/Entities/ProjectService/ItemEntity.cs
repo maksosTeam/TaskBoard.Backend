@@ -18,7 +18,7 @@
         public int? ItemTypeId { get; set; }
         public int? StatusId { get; set; }
         public bool IsArchived { get; set; }
-        public string MergeLink { get; set; }
+        public string? MergeLink { get; set; } = string.Empty;
 
         public ItemEntity Parent { get; set; }
         public ICollection<ItemEntity> Children { get; set; }
