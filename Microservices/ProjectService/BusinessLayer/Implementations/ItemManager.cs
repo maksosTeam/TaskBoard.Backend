@@ -26,7 +26,9 @@ public class ItemManager(
     IAttachmentRepository attachmentRepository,
     IUserRepository userRepository,
     IMessageHandler<TaskEventMessage> messageHandler,
+    /*
     IKafkaProducer<TaskEventMessage> kafkaProducer,
+    */
     HttpClient httpClient,
     IAuth auth) : IItemManager
 {
