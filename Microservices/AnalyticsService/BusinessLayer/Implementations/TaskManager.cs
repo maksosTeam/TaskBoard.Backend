@@ -1,15 +1,14 @@
 using AnalyticsService.BusinessLayer.Implementations;
 using AnalyticsService.DataLayer.Abstractions;
-using AnalyticsService.Kafka;
 using SharedLibrary.Entities.AnalyticsService;
 using SharedLibrary.Models;
-using TaskHistoryModel = SharedLibrary.Models.AnalyticModels.TaskHistoryModel;
+using SharedLibrary.Models.AnalyticModels;
 
 namespace AnalyticsService.BusinessLayer.Abstractions;
 
-public class TaskManager(ITaskHistoryRepository taskHistoryRepository, IProjectKafkaClient kafkaClient) : ITaskManager
+public class TaskManager(HttpClient httpClient, ITaskHistoryRepository taskHistoryRepository) : ITaskManager
 {
-    public async Task<int> CreateAsync(TaskHistoryModel model)
+    public async Task<int> CreateAsync(SharedLibrary.Models.AnalyticModels.TaskHistoryModel model)
     {
         var entity = new TaskHistoryEntity
         {
@@ -23,23 +22,23 @@ public class TaskManager(ITaskHistoryRepository taskHistoryRepository, IProjectK
         await taskHistoryRepository.CreateAsync(entity);
         return entity.Id;
     }
-
-    public async Task<IEnumerable<ItemModel>> GetCompletedTaskBetween(int projectId, DateTime startDate,
-        DateTime endDate)
+    
+    public async Task<IEnumerable<ItemModel>> GetCompletedTaskBetween(int projectId, DateTime startDate, DateTime endDate)
     {
-        var items = await kafkaClient.GetItemsAsync(projectId);
-        return items
-            .Where(item => IsTaskCompleted(item) && IsTaskBetweenDates(item, startDate, endDate));
+        var items = 
+            (await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"get-items-by/{projectId}"))
+            .Where(item=>IsTaskCompleted(item) && IsTaskBetweenDates(item, startDate, endDate));
+        return items;
     }
 
     public async Task<int> GetCompletedTaskCountBetween(int projectId, DateTime startDate, DateTime endDate)
     {
         return (await GetCompletedTaskBetween(projectId, startDate, endDate)).Count();
     }
-
+    
     public async Task<TimeSpan?> GetAverageTimeInStatusAsync(int taskId, string statusName)
     {
-        var item = await kafkaClient.GetItemByIdAsync(taskId);
+        var item = await httpClient.GetFromJsonAsync<ItemModel>($"{taskId}");
         var start = item.StartDate;
 
         var history = (await taskHistoryRepository.GetHistoryByTaskIdAsync(taskId))
@@ -77,10 +76,10 @@ public class TaskManager(ITaskHistoryRepository taskHistoryRepository, IProjectK
 
         return totalTime / count;
     }
-
+    
     public async Task<TimeSpan> GetTotalTimeOutsideStatusAsync(int taskId, string excludedStatus)
     {
-        var item = await kafkaClient.GetItemByIdAsync(taskId);
+        var item = await httpClient.GetFromJsonAsync<ItemModel>($"{taskId}");
         var history = (await taskHistoryRepository.GetHistoryByTaskIdAsync(taskId))
             .Where(h => h.FieldName == "StatusId")
             .OrderBy(h => h.ChangedAt)
@@ -104,11 +103,11 @@ public class TaskManager(ITaskHistoryRepository taskHistoryRepository, IProjectK
 
         return total;
     }
-
+    
     //TODO проверить на норм значениях итема с норм стартдатой
     public async Task<IDictionary<string, TimeSpan>> GetAverageTimeInStatusesAsync(int taskId)
     {
-        var item = await kafkaClient.GetItemByIdAsync(taskId);
+        var item = await httpClient.GetFromJsonAsync<ItemModel>($"{taskId}");
         var start = item.StartDate;
 
         var timeSpent = new Dictionary<string, TimeSpan>();
