@@ -195,7 +195,7 @@ internal class Program
          * KAFKA CLIENT
          */
 
-        services.AddScoped<ProjectKafkaClient>();
+        services.AddScoped<IProjectKafkaClient, ProjectKafkaClient>();
 
         /*
          * KAFKA CONSUMERS

@@ -1,49 +1,54 @@
-﻿using ProjectService.DataLayer.Repositories.Abstractions;
-using SharedLibrary.Dapper.DapperRepositories;
-using SharedLibrary.Dapper.DapperRepositories.Abstractions;
-using SharedLibrary.Entities.ProjectService;
+﻿using SharedLibrary.Entities.ProjectService;
 using SharedLibrary.Models;
 
-namespace ProjectService.Mapper
+namespace ProjectService.Mapper;
+
+public static class CommentMapper
 {
-    public static class CommentMapper
+    public static CommentEntity? ToEntity(CommentModel? model)
     {
-        public static CommentEntity? ToEntity(CommentModel? model)
+        if (model is null)
+            return null;
+
+        return new CommentEntity
         {
-            if (model is null)
-                return null;
+            AuthorId = model.AuthorId,
+            ItemId = model.ItemId,
+            Text = model.Text,
+            CreatedAt = model.CreatedAt
+        };
+    }
 
-            return new CommentEntity
-            {
-                AuthorId = model.AuthorId,
-                ItemId = model.ItemId,
-                Text = model.Text,
-                CreatedAt = model.CreatedAt
-            };
-        }
+    /// <summary>
+    /// Синхронный маппинг комментария с использованием готового кэша имен пользователей
+    /// </summary>
+    public static CommentModel? ToModel(CommentEntity? entity, Dictionary<int, string> userNamesCache)
+    {
+        if (entity is null)
+            return null;
 
-        public static async Task<CommentModel?> ToModel(CommentEntity? entity, IUserRepository userRepository)
+        var model = new CommentModel
         {
-            if (entity is null)
-                return null;
+            Id = entity.Id,
+            AuthorId = entity.AuthorId,
+            ItemId = entity.ItemId,
+            Text = entity.Text,
+            CreatedAt = entity.CreatedAt,
+            Attachments = entity.Attachments?.Select(AttachmentMapper.ToModel).ToList() ?? new List<AttachmentModel>()
+        };
 
-            var model = new CommentModel
+        if (entity.AuthorId != null)
+        {
+            if (userNamesCache.TryGetValue(entity.AuthorId, out var username))
             {
-                Id = entity.Id,
-                AuthorId = entity.AuthorId,
-                ItemId = entity.ItemId,
-                Text = entity.Text,
-                CreatedAt = entity.CreatedAt,
-                Attachments = entity.Attachments.Select(AttachmentMapper.ToModel).ToList()
-            };
-
-            if (entity.AuthorId != null)
-            {
-                var user = await userRepository.GetUserAsync(entity.AuthorId);
-                model.SetName(user.Username);
+                model.SetName(username);
             }
-
-            return model;
+            else
+            {
+                model.SetName($"{entity.AuthorId}");
+            }
         }
+
+        return model;
     }
 }
