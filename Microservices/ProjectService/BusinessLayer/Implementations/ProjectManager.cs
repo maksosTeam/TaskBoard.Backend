@@ -1,5 +1,4 @@
-﻿using System.Data;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using ProjectService.BusinessLayer.Abstractions;
 using ProjectService.DataLayer.Repositories.Abstractions;
 using ProjectService.Exceptions;
@@ -7,7 +6,6 @@ using ProjectService.Mapper;
 using ProjectService.Models;
 using SharedLibrary.Auth;
 using SharedLibrary.Constants;
-using SharedLibrary.Dapper.DapperRepositories;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.Entities.ProjectService; // Убедись, что этот namespace верный для ProjectEntity
 using SharedLibrary.Models;
