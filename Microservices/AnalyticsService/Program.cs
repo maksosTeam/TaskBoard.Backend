@@ -145,35 +145,51 @@ internal class Program
          * KAFKA SETTINGS
          */
 
+        // Извлекаем адрес сервера из .env напрямую, чтобы избежать проблем с маппингом регистров букв
+        var bootstrapServers = Environment.GetEnvironmentVariable("KAFKA__GETITEMSBYPROJECTREQUEST__BOOTSTRAPSERVERS") ?? "kafka:29092";
+
+        // Регистрируем именованные опции и принудительно проставляем им BootstrapServers
         services.Configure<KafkaSettings>(
             "GetItemsByProjectRequest",
-            configuration.GetSection(
-                "KAFKA:GETITEMSBYPROJECTREQUEST"));
+            options => {
+                configuration.GetSection("KAFKA:GETITEMSBYPROJECTREQUEST").Bind(options);
+                options.BootstrapServers = bootstrapServers;
+            });
 
         services.Configure<KafkaSettings>(
             "GetItemsByProjectResponse",
-            configuration.GetSection(
-                "KAFKA:GETITEMSBYPROJECTRESPONSE"));
+            options => {
+                configuration.GetSection("KAFKA:GETITEMSBYPROJECTRESPONSE").Bind(options);
+                options.BootstrapServers = bootstrapServers;
+            });
 
         services.Configure<KafkaSettings>(
             "GetItemByIdRequest",
-            configuration.GetSection(
-                "KAFKA:GETITEMBYIDREQUEST"));
+            options => {
+                configuration.GetSection("KAFKA:GETITEMBYIDREQUEST").Bind(options);
+                options.BootstrapServers = bootstrapServers;
+            });
 
         services.Configure<KafkaSettings>(
             "GetItemByIdResponse",
-            configuration.GetSection(
-                "KAFKA:GETITEMBYIDRESPONSE"));
+            options => {
+                configuration.GetSection("KAFKA:GETITEMBYIDRESPONSE").Bind(options);
+                options.BootstrapServers = bootstrapServers;
+            });
 
         services.Configure<KafkaSettings>(
             "GetProjectByIdRequest",
-            configuration.GetSection(
-                "KAFKA:GETPROJECTBYIDREQUEST"));
+            options => {
+                configuration.GetSection("KAFKA:GETPROJECTBYIDREQUEST").Bind(options);
+                options.BootstrapServers = bootstrapServers;
+            });
 
         services.Configure<KafkaSettings>(
             "GetProjectByIdResponse",
-            configuration.GetSection(
-                "KAFKA:GETPROJECTBYIDRESPONSE"));
+            options => {
+                configuration.GetSection("KAFKA:GETPROJECTBYIDRESPONSE").Bind(options);
+                options.BootstrapServers = bootstrapServers;
+            });
 
         /*
          * KAFKA PRODUCERS
