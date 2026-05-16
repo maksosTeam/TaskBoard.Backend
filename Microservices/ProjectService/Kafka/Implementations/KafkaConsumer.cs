@@ -1,12 +1,10 @@
-﻿using Confluent.Kafka;
-using Kafka.Messaging.Services.Abstractions;
+﻿using System.Diagnostics;
+using Confluent.Kafka;
 using Kafka.Messaging.Settings;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.DependencyInjection;
-using System.Diagnostics;
+using ProjectService.Kafka.Abstractions;
 
-namespace Kafka.Messaging.Services.Implementations
+namespace ProjectService.Kafka.Implementations
 {
     public class KafkaConsumer<TMessage> : BackgroundService
     {

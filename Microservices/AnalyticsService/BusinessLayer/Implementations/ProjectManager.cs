@@ -1,25 +1,22 @@
 ﻿using AnalyticsService.BusinessLayer.Abstractions;
 using AnalyticsService.DataLayer.Abstractions;
+using AnalyticsService.Kafka;
 using AnalyticsService.Mapper;
 using AnalyticsService.Models;
-using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
-using Org.BouncyCastle.Asn1.Ocsp;
 using SharedLibrary.Constants;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.Models;
 using SharedLibrary.ProjectModels;
-using System.Net.Http.Headers;
 
 namespace AnalyticsService.BusinessLayer.Implementations
 {
-    public class ProjectManager(HttpClient httpClient, ITaskHistoryRepository taskHistoryRepository, IUserRepository userRepository) : IProjectManager
+    public class ProjectManager(ITaskHistoryRepository taskHistoryRepository, IUserRepository userRepository, IProjectKafkaClient kafkaClient) : IProjectManager
     {
         public async Task<BurndownChartModel> GetBurndown(BurnDownChartRequest request)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"item/get-items-by/{request.ProjectId}");
-            var project = await httpClient.GetFromJsonAsync<ProjectModel>($"project/get/{request.ProjectId}");
-
+            var items = await kafkaClient.GetItemsAsync(request.ProjectId);
+            var project = await kafkaClient.GetProjectByIdAsync(request.ProjectId);
+            
             if (items is null || project is null)
                 throw new InvalidOperationException("Project service вернул пустой ответ.");
 
@@ -53,8 +50,7 @@ namespace AnalyticsService.BusinessLayer.Implementations
 
         public async Task<ICollection<ChartDataPoint>> GetCustomChart(ChartQueryModel query)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>(
-                $"item/get-items-by/{query.ProjectId}");
+            var items = await kafkaClient.GetItemsAsync(query.ProjectId);
 
             items = items
                 .Where(i => i.StartDate >= query.Start && i.StartDate <= query.End)
@@ -138,7 +134,7 @@ namespace AnalyticsService.BusinessLayer.Implementations
 
         public async Task<ICollection<TaskHistoryModel>> GetProjectHistory(int projectId)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"item/get-items-by/{projectId}");
+            var items = await kafkaClient.GetItemsAsync(projectId);
 
             var itemIds = items.Select(x => x.Id).ToHashSet();
 
@@ -152,7 +148,7 @@ namespace AnalyticsService.BusinessLayer.Implementations
 
         public async Task<ICollection<GanttTaskModel>> GetGanttChartDataAsync(int projectId)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"item/get-items-by/{projectId}");
+            var items = await kafkaClient.GetItemsAsync(projectId);
 
             var ganttTasks = items
                 .Where(i => i.StartDate != default && i.ExpectedEndDate != default)
@@ -173,7 +169,7 @@ namespace AnalyticsService.BusinessLayer.Implementations
 
         public async Task<ICollection<RoadmapItemModel>> GetRoadmapDataAsync(int projectId)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"item/get-items-by/{projectId}");
+            var items = await kafkaClient.GetItemsAsync(projectId);
 
             var roadmapItems = items
                 .Where(i => i.StartDate != default && i.ExpectedEndDate != default)
@@ -212,8 +208,7 @@ namespace AnalyticsService.BusinessLayer.Implementations
         /// <returns>Список ячеек тепловой карты с координатами и значением</returns>
         public async Task<List<HeatmapCell>> GetHeatmapData(HeatmapQueryModel query)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>(
-                $"item/get-items-by/{query.ProjectId}");
+            var items = await kafkaClient.GetItemsAsync(query.ProjectId);
 
             var filteredItems = items
                 .Where(i => i.StartDate.Date >= query.Start.Date && i.StartDate.Date <= query.End.Date)
