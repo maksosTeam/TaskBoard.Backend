@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 
 WORKDIR /src
 
@@ -9,14 +9,14 @@ COPY Shared/ Shared/
 WORKDIR /src/Microservices/AnalyticsService
 
 RUN dotnet restore "AnalyticsService.csproj"
-RUN dotnet build "AnalyticsService.csproj" -c Release -o /app/build
+RUN dotnet build "AnalyticsService.csproj" -c Development -o /app/build
 
 FROM build AS publish
 
 WORKDIR /src/Microservices/AnalyticsService
 
-RUN dotnet publish "AnalyticsService.csproj" -c Release -o /app/publish
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+RUN dotnet publish "AnalyticsService.csproj" -c Development -o /app/publish
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 
 WORKDIR /app
 
