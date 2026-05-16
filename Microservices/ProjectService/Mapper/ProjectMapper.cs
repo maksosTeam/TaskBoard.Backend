@@ -23,7 +23,7 @@ namespace ProjectService.Mapper
             };
         }
 
-        public static async Task<ProjectModel> ToModel(ProjectEntity projectModel, IUserRepository userRepository)
+        public static async Task<ProjectModel> ToModel(ProjectEntity projectModel, string? headUserName)
         {
             var project = new ProjectModel()
             {
@@ -39,11 +39,7 @@ namespace ProjectService.Mapper
                 UserProjects = projectModel.UserProjects.Select(UserProjectMapper.ToModel).ToList()
             };
             
-            var headId = projectModel.UserProjects.FirstOrDefault(x => x.RoleId == DefaultRoles.CREATOR).UserId;
-
-            var user = await userRepository.GetUserAsync(headId);
-
-            project.SetHead(user.Username);
+            project.SetHead(headUserName ?? "Не назначен");
 
             return project;
         }
