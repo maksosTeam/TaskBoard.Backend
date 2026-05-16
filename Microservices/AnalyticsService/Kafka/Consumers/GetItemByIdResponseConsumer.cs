@@ -46,40 +46,36 @@ public class GetItemByIdResponseConsumer
                 .Build();
     }
 
-    protected override Task ExecuteAsync(
-        CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await Task.Yield(); 
+
         consumer.Subscribe(topic);
 
-        return Task.Run(() =>
+        while (!stoppingToken.IsCancellationRequested)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
-                try
+                var result = consumer.Consume(stoppingToken);
+
+                if (result == null) continue;
+
+                var response = result.Message.Value;
+
+                if (PendingItemRequests.Requests.TryRemove(response.CorrelationId, out var tcs))
                 {
-                    var result =
-                        consumer.Consume(stoppingToken);
-
-                    if (result == null)
-                        continue;
-
-                    var response =
-                        result.Message.Value;
-
-                    if (PendingItemRequests.Requests
-                        .TryRemove(
-                            response.CorrelationId,
-                            out var tcs))
-                    {
-                        tcs.SetResult(response);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex.Message);
+                    tcs.SetResult(response);
                 }
             }
-        }, stoppingToken);
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка при чтении из Kafka: {ex.Message}");
+            }
+        }
     }
 
     public override Task StopAsync(

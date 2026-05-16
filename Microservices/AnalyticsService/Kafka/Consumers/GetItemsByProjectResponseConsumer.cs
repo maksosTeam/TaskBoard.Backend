@@ -43,39 +43,39 @@ public class GetItemsByProjectResponseConsumer
                 .Build();
     }
 
-    protected override Task ExecuteAsync(
-        CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Важно: дать хосту запуститься, прежде чем уйти в бесконечный цикл
+        await Task.Yield(); 
+
         consumer.Subscribe(topic);
 
-        return Task.Run(() =>
+        while (!stoppingToken.IsCancellationRequested)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
-                try
+                // Consume имеет перегрузку с CancellationToken, он разблокируется сам
+                var result = consumer.Consume(stoppingToken);
+
+                if (result == null) continue;
+
+                var response = result.Message.Value;
+
+                if (PendingRequests.Requests.TryRemove(response.CorrelationId, out var tcs))
                 {
-                    var result =
-                        consumer.Consume(stoppingToken);
-
-                    if (result == null)
-                        continue;
-
-                    var response =
-                        result.Message.Value;
-
-                    if (PendingRequests.Requests.TryRemove(
-                            response.CorrelationId,
-                            out var tcs))
-                    {
-                        tcs.SetResult(response);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex.Message);
+                    tcs.SetResult(response);
                 }
             }
-        }, stoppingToken);
+            catch (OperationCanceledException)
+            {
+                // Это нормальное исключение при остановке приложения
+                break;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка при чтении из Kafka: {ex.Message}");
+            }
+        }
     }
 
     public override Task StopAsync(
