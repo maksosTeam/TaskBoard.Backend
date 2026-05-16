@@ -23,7 +23,7 @@ public class ItemModel
     public int? ItemTypeId { get; set; }
     public int? StatusId { get; set; }
     public bool IsArchived { get; set; }
-    public string MergeLink { get; set; }
+    public string? MergeLink { get; set; } = string.Empty;
 
     [JsonInclude]
     public List<string> Contributors { get; private set; } = new List<string>();
