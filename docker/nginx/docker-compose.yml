@@ -9,6 +9,7 @@ services:
       - ./conf.d:/etc/nginx/conf.d:ro
       - ./static:/usr/share/nginx/static:ro
       - ./ssl:/etc/nginx/ssl:ro
+      - ./logs:/var/log/nginx 
     networks:
       - taskboard-network
     restart: unless-stopped
