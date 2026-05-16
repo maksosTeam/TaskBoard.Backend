@@ -1,28 +1,28 @@
-﻿using SharedLibrary.Dapper.DapperRepositories.Abstractions;
-using SharedLibrary.Entities.ProjectService;
+﻿using SharedLibrary.Entities.ProjectService;
 using SharedLibrary.Models;
 
-namespace ProjectService.Mapper;
-
-public static class ProjectLinkMapper
+namespace ProjectService.Mapper
 {
-    public static ProjectLinkEntity ToEntity(ProjectLinkModel model)
+    public static class ProjectLinkMapper
     {
-        return new ProjectLinkEntity
+        public static ProjectLinkEntity ToEntity(ProjectLinkModel model)
         {
-            ProjectId = model.ProjectId,
-            Url = model.Url,
-        };
-    }
-    
-    public static async Task<ProjectLinkModel> ToModel(ProjectLinkEntity model, IUserRepository userRepository)
-    {
-        return new ProjectLinkModel
+            return new ProjectLinkEntity
+            {
+                ProjectId = model.ProjectId,
+                Url = model.Url,
+            };
+        }
+
+        public static ProjectLinkModel ToModel(ProjectLinkEntity entity, string? projectHeadUsername)
         {
-            Id = model.Id,
-            ProjectId = model.ProjectId,
-            Project = await ProjectMapper.ToModel(model.Project, userRepository),
-            Url = model.Url,
-        };
+            return new ProjectLinkModel
+            {
+                Id = entity.Id,
+                ProjectId = entity.ProjectId,
+                Project = entity.Project is null ? null : ProjectMapper.ToModel(entity.Project, projectHeadUsername),
+                Url = entity.Url,
+            };
+        }
     }
 }

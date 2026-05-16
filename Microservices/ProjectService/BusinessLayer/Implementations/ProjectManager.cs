@@ -9,14 +9,31 @@ using SharedLibrary.Auth;
 using SharedLibrary.Constants;
 using SharedLibrary.Dapper.DapperRepositories;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
+using SharedLibrary.Entities.ProjectService; // Убедись, что этот namespace верный для ProjectEntity
 using SharedLibrary.Models;
 using SharedLibrary.ProjectModels;
 
 namespace ProjectService.BusinessLayer.Implementations;
 
-public class ProjectManager(IProjectRepository projectRepository, IUserProjectManager userProjectManager, IAuth auth, IUserRepository userRepository, IItemRepository itemRepository)
+public class ProjectManager(
+    IProjectRepository projectRepository,
+    IUserProjectManager userProjectManager,
+    IAuth auth,
+    IUserRepository userRepository,
+    IItemRepository itemRepository)
     : IProjectManager
 {
+    // Вспомогательный приватный метод для безопасного получения Username создателя
+    private async Task<string?> GetHeadUsernameAsync(ProjectEntity project)
+    {
+        var headProject = project.UserProjects.FirstOrDefault(x => x.RoleId == DefaultRoles.CREATOR);
+        if (headProject == null)
+            return null;
+
+        var user = await userRepository.GetUserAsync(headProject.UserId);
+        return user?.Username;
+    }
+
     public async Task<int> CreateAsync(ProjectModel project)
     {
         var projectEntity = ProjectMapper.ToEntity(project);
@@ -61,7 +78,9 @@ public class ProjectManager(IProjectRepository projectRepository, IUserProjectMa
             var project = await projectRepository.GetByIdAsync(id);
             if (project == null)
                 throw new ProjectNotFoundException();
-            return await ProjectMapper.ToModel(project, userRepository);
+
+            var headUsername = await GetHeadUsernameAsync(project);
+            return ProjectMapper.ToModel(project, headUsername);
         }
 
         throw new NotAuthorizedException("У пользователя нет доступа к проекту");
@@ -103,12 +122,9 @@ public class ProjectManager(IProjectRepository projectRepository, IUserProjectMa
         return await userProjectManager.IsUserCanViewAsync(userId, projectId);
     }
 
-
-    //Подумать над логикой
     public async Task<int> AddUserInProjectAsync(int userId, int projectId)
     {
         var user = await userRepository.GetUserAsync(userId);
-
         var project = await projectRepository.GetByIdAsync(projectId);
 
         if (user is null || project is null)
@@ -140,35 +156,31 @@ public class ProjectManager(IProjectRepository projectRepository, IUserProjectMa
     public async Task<ProjectModel?> GetByBoardIdAsync(int id)
     {
         var project = await projectRepository.GetByBoardIdAsync(id);
-        return await ProjectMapper.ToModel(project!, userRepository);
+        if (project == null)
+            return null;
+
+        var headUsername = await GetHeadUsernameAsync(project);
+
+        return ProjectMapper.ToModel(project, headUsername);
     }
 
     public async Task<ICollection<ProjectModel?>> Get()
     {
         var currentUserId = auth.GetCurrentUserId();
-
         var projectsEntities = await projectRepository.GetByUserId(currentUserId).ToListAsync();
 
         var projectModels = new List<ProjectModel?>();
 
         foreach (var p in projectsEntities)
         {
-            var headProject = p.UserProjects.FirstOrDefault(x => x.RoleId == DefaultRoles.CREATOR);
-            string? headUsername = null;
-
-            if (headProject != null)
-            {
-                var user = await userRepository.GetUserAsync(headProject.UserId);
-                headUsername = user?.Username;
-            }
-
+            // Используем приватный метод, код стал чище
+            var headUsername = await GetHeadUsernameAsync(p);
             var model = ProjectMapper.ToModel(p, headUsername);
             projectModels.Add(model);
         }
 
         return projectModels;
     }
-
 
     public async Task<int> SetUserRoleAsync(int userId, int projectId, RoleModel role)
     {
@@ -210,7 +222,6 @@ public class ProjectManager(IProjectRepository projectRepository, IUserProjectMa
                 NewTasks = tasks.Count(x => x.Status.Order == 0),
                 InWork = tasks.Count(x => x.Status.Order != 0 && !x.Status.IsDone && !x.Status.IsRejected),
                 Completed = tasks.Count(x => x.Status.IsDone)
-            
             };
 
             return tasksState;

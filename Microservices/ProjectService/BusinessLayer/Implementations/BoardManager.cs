@@ -10,9 +10,24 @@ using SharedLibrary.Models;
 
 namespace ProjectService.BusinessLayer.Implementations;
 
-public class BoardManager(IBoardRepository boardRepository, IAuth auth, IProjectManager projectManager, 
-    IValidateBoardManager validatorManager, IUserRepository userRepository) : IBoardManager
+public class BoardManager(
+    IBoardRepository boardRepository,
+    IAuth auth,
+    IProjectManager projectManager,
+    IValidateBoardManager validatorManager,
+    IUserRepository userRepository)
+    : IBoardManager
 {
+    private async Task<string?> GetProjectHeadUsernameAsync(ProjectEntity? project)
+    {
+        var headProject = project?.UserProjects?.FirstOrDefault(x => x.RoleId == DefaultRoles.CREATOR);
+        if (headProject == null)
+            return null;
+
+        var user = await userRepository.GetUserAsync(headProject.UserId);
+        return user?.Username;
+    }
+
     public async Task<int> CreateAsync(BoardModel board)
     {
         await validatorManager.ValidateUserAdminAsync(board.ProjectId);
@@ -36,18 +51,24 @@ public class BoardManager(IBoardRepository boardRepository, IAuth auth, IProject
 
         var boardsEntities = await boardRepository.GetByProjectIdAsync(projectId);
 
-        var boardModels = await Task.WhenAll(
-            boardsEntities.Select(b => BoardMapper.ToModel(b, userRepository))
-        );
+        string? headUsername = null;
+        var firstBoard = boardsEntities.FirstOrDefault();
+        if (firstBoard?.Project != null)
+        {
+            headUsername = await GetProjectHeadUsernameAsync(firstBoard.Project);
+        }
 
-        return boardModels.ToList();
+        var boardModels = boardsEntities
+            .Select(b => BoardMapper.ToModel(b, headUsername))
+            .ToList();
+
+        return boardModels;
     }
-
 
     public async Task<int> DeleteAsync(int id)
     {
         var projectId = await projectManager.GetByBoardIdAsync(id);
-        await validatorManager.ValidateUserAdminAsync(projectId.Id);
+        await validatorManager.ValidateUserAdminAsync(projectId!.Id);
         await boardRepository.DeleteAsync(id);
         return id;
     }
@@ -55,12 +76,15 @@ public class BoardManager(IBoardRepository boardRepository, IAuth auth, IProject
     public async Task<BoardModel?> GetByIdAsync(int id)
     {
         var board = await boardRepository.GetByIdAsync(id);
-        if (board is null) throw new BoardNotFoundException($"Доски с id {id} не существует");
-        var userProject = await projectManager.GetByBoardIdAsync(id);
-        await validatorManager.ValidateUserCanViewAsync(userProject.Id);
-        return await BoardMapper.ToModel(board, userRepository);
-    }
+        if (board is null)
+            throw new BoardNotFoundException($"Доски с id {id} не существует");
 
+        var userProject = await projectManager.GetByBoardIdAsync(id);
+        await validatorManager.ValidateUserCanViewAsync(userProject!.Id);
+
+        var headUsername = await GetProjectHeadUsernameAsync(board.Project);
+        return BoardMapper.ToModel(board, headUsername);
+    }
 
     public async Task<int> UpdateAsync(BoardModel board)
     {
@@ -77,7 +101,9 @@ public class BoardManager(IBoardRepository boardRepository, IAuth auth, IProject
         foreach (var board in boards)
         {
             await validatorManager.ValidateUserCanViewAsync(board.ProjectId, userId);
-            result.Add(await BoardMapper.ToModel(board, userRepository));
+
+            var headUsername = await GetProjectHeadUsernameAsync(board.Project);
+            result.Add(BoardMapper.ToModel(board, headUsername));
         }
 
         return result;
@@ -86,7 +112,9 @@ public class BoardManager(IBoardRepository boardRepository, IAuth auth, IProject
     public async Task<ICollection<BoardModel>> GetCurrentBoardsAsync()
     {
         var userId = auth.GetCurrentUserId();
-        if (userId is null || userId == -1) throw new NotAuthorizedException();
+        if (userId is null || userId == -1)
+            throw new NotAuthorizedException();
+
         var result = await GetByUserIdAsync((int)userId);
         return result;
     }
