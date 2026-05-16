@@ -1,4 +1,4 @@
-﻿namespace ProjectService.Kafka.Abstractions
+﻿namespace Kafka.Messaging.Services.Abstractions
 {
     public interface IMessageHandler<in TMessage>
     {
