@@ -17,7 +17,7 @@ services:
       user-db:
         condition: service_healthy
     networks:
-      - swaga-network
+      - taskboard-network
 
   user-db:
     container_name: swaga-user-db
@@ -27,7 +27,7 @@ services:
     volumes:
       - user-data:/var/lib/postgresql/data
     networks:
-      - swaga-network
+      - taskboard-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${USERNAME} -d ${POSTGRES_DB}"]
       interval: 7s
