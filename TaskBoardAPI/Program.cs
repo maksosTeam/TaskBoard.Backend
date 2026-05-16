@@ -29,17 +29,14 @@ internal class Program
 
         app.UseCors("AllowAll");
 
-        if (app.Environment.IsDevelopment())
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
         {
-            app.UseSwagger();
-            app.UseSwaggerUI(c =>
-            {
-                c.SwaggerEndpoint(Environment.GetEnvironmentVariable("GATEWAY") + "/swagger/v1/swagger.json", "API Gateway");
-                c.SwaggerEndpoint(Environment.GetEnvironmentVariable("PROJECT_API") + "/swagger/v1/swagger.json", "Project Service");
-                c.SwaggerEndpoint(Environment.GetEnvironmentVariable("ANALYTICS_API") + "/swagger/v1/swagger.json", "Analytics Service");
-                c.SwaggerEndpoint(Environment.GetEnvironmentVariable("USER_API") + "/swagger/v1/swagger.json", "User Service");
-            });
-        }
+            c.SwaggerEndpoint(Environment.GetEnvironmentVariable("GATEWAY") + "/swagger/v1/swagger.json", "API Gateway");
+            c.SwaggerEndpoint(Environment.GetEnvironmentVariable("PROJECT_API") + "/swagger/v1/swagger.json", "Project Service");
+            c.SwaggerEndpoint(Environment.GetEnvironmentVariable("ANALYTICS_API") + "/swagger/v1/swagger.json", "Analytics Service");
+            c.SwaggerEndpoint(Environment.GetEnvironmentVariable("USER_API") + "/swagger/v1/swagger.json", "User Service");
+        });
 
         app.MapReverseProxy();
 

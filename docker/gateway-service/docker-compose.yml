@@ -1,6 +1,6 @@
 services:
   gateway-service:
-    image: ghcr.io/maksosteam/gateway-service:1.0.4
+    image: ghcr.io/maksosteam/gateway-service:1.0.5
     container_name: taskboard-gateway-serv
     env_file:
       - ./.env
