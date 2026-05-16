@@ -49,6 +49,40 @@ services:
       timeout: 5s
       retries: 5
 
+  kafka-init-topics:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka-init-topics
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - taskboard-network
+    entrypoint: [ "bin/sh", "-c" ]
+    command: |
+      "
+      echo 'Waiting for Kafka to settle...'
+      sleep 3;
+      
+      # 1. Топики для GetItemsByProject
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic get-items-by-project-request --replication-factor 1 --partitions 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic get-items-by-project-response --replication-factor 1 --partitions 1
+      
+      # 2. Топики для GetItemById
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic get-item-by-id-request --replication-factor 1 --partitions 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic get-item-by-id-response --replication-factor 1 --partitions 1
+      
+      # 3. Топики для GetProjectById
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic get-project-by-id-request --replication-factor 1 --partitions 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic get-project-by-id-response --replication-factor 1 --partitions 1
+      
+      # 4. Топики уведомлений, комментариев и инвайтов
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic new-task --replication-factor 1 --partitions 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic new-comment --replication-factor 1 --partitions 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic new-invite --replication-factor 1 --partitions 1
+      
+      echo 'All taskboard topics have been created successfully!'
+      "
+
 networks:
   taskboard-network:
     name: taskboard-network
