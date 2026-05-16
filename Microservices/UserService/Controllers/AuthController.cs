@@ -94,7 +94,7 @@ namespace UserService.Controllers
         [ProducesResponseType<JsonProperty>(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpPost("change-password")]
-        public async Task<IActionResult> СhangePassword([FromBody] ChangePasswordModel changePasswordModel)
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordModel changePasswordModel)
         {
             try
             {

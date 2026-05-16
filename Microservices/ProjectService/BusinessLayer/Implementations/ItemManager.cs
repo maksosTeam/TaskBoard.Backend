@@ -13,6 +13,7 @@ using SharedLibrary.Models.AnalyticModels;
 using SharedLibrary.Models.KafkaModel;
 using SharedLibrary.Models;
 using SharedLibrary.Entities;
+using System.Net.Http.Json;
 
 namespace ProjectService.BusinessLayer.Implementations;
 
@@ -28,17 +29,71 @@ public class ItemManager(
     HttpClient httpClient,
     IAuth auth) : IItemManager
 {
+    #region Вспомогательные методы пакетной загрузки (Победа над N+1)
+
+    private async Task<ItemModel> EnrichItemAsync(ItemEntity entity)
+    {
+        var userIds = new HashSet<int>();
+        if (entity.AuthorId.HasValue)
+            userIds.Add(entity.AuthorId.Value);
+        if (entity.UserItems != null)
+        {
+            foreach (var ui in entity.UserItems)
+                userIds.Add(ui.UserId);
+        }
+
+        var cache = new Dictionary<int, string>();
+        foreach (var id in userIds)
+        {
+            var user = await userRepository.GetUserAsync(id);
+            if (user != null)
+                cache[id] = user.Username;
+        }
+
+        return ItemMapper.ToModel(entity, cache)!;
+    }
+
+    private async Task<IEnumerable<ItemModel>> EnrichItemsAsync(IEnumerable<ItemEntity> entities)
+    {
+        var entityList = entities.ToList();
+        var userIds = new HashSet<int>();
+
+        foreach (var entity in entityList)
+        {
+            if (entity.AuthorId.HasValue)
+                userIds.Add(entity.AuthorId.Value);
+            if (entity.UserItems != null)
+            {
+                foreach (var ui in entity.UserItems)
+                    userIds.Add(ui.UserId);
+            }
+        }
+
+        // Пакетный сбор данных пользователей. 
+        // Если твой userRepository поддерживает GetUsersByIdsAsync(IEnumerable<int> ids) — лучше переписать на него!
+        var cache = new Dictionary<int, string>();
+        foreach (var id in userIds)
+        {
+            var user = await userRepository.GetUserAsync(id);
+            if (user != null)
+                cache[id] = user.Username;
+        }
+
+        return entityList.Select(x => ItemMapper.ToModel(x, cache)!).ToList();
+    }
+
+    #endregion
+
     public async Task<int> CreateAsync(CreateItemModel createItemModel, CancellationToken token)
     {
         await validatorManager.ValidateCreateAsync(createItemModel);
 
         var currentUserId = auth.GetCurrentUserId();
-
         var project = await projectRepository.GetByBoardIdAsync(createItemModel.BoardId);
 
         var item = createItemModel.Item;
         var entity = ItemMapper.ItemToEntity(item);
-        entity.CreatedAt = DateTime.UtcNow;
+        entity!.CreatedAt = DateTime.UtcNow;
 
         await itemRepository.CreateAsync(entity);
 
@@ -53,20 +108,20 @@ public class ItemManager(
                 StatusId = (int)entity.StatusId!
             }
         );
-        
+
         entity = await itemRepository.GetByIdAsync(entity.Id);
 
-        var model = new SharedLibrary.Models.AnalyticModels.TaskHistoryModel
+        var model = new SharedLibrary.Models.TaskHistoryModel
         {
             FieldName = "Новое задание",
             OldValue = "",
             NewValue = item.Title,
-            ItemId = item.Id,
-            UserId = (int)auth.GetCurrentUserId()!,
+            ItemId = entity.Id,
+            UserId = (int)currentUserId!,
             ChangedAt = DateTime.UtcNow
         };
 
-        await httpClient.PostAsJsonAsync("create", model);
+        await httpClient.PostAsJsonAsync("create", model, cancellationToken: token);
 
         return entity.Id;
     }
@@ -79,24 +134,25 @@ public class ItemManager(
     public async Task<IEnumerable<ItemModel>> GetAllItemsAsync()
     {
         var items = await itemRepository.GetItemsAsync();
-
-        var models = await Task.WhenAll(items.Select(x=>ItemMapper.ToModel(x, userRepository)));
-
-        return models;
+        return await EnrichItemsAsync(items);
     }
 
     public async Task<ItemModel> GetByIdAsync(int? id)
     {
-        if (id is null) throw new ArgumentNullException(nameof(id));
-        var model = await ItemMapper.ToModel(await itemRepository.GetByIdAsync((int)id), userRepository);
-        return model;
+        if (id is null)
+            throw new ArgumentNullException(nameof(id));
+        var entity = await itemRepository.GetByIdAsync((int)id);
+        if (entity is null)
+            throw new ItemNotFoundException();
+
+        return await EnrichItemAsync(entity);
     }
 
     public async Task<ICollection<ItemModel>> GetByBoardIdAsync(int boardId)
     {
         var items = await itemRepository.GetItemsByBoardIdAsync(boardId);
-        var models = await Task.WhenAll(items.Select(x=>ItemMapper.ToModel(x, userRepository)));
-        return models;
+        var models = await EnrichItemsAsync(items);
+        return models.ToList();
     }
 
     public async Task<int> UpdateAsync(ItemModel item, CancellationToken token, string message, string oldValue, string newValue, string fieldName,
@@ -104,17 +160,21 @@ public class ItemManager(
     {
         await validatorManager.ValidateItemModelAsync(item);
         var entity = ItemMapper.ItemToEntity(item);
-        entity.Id = item.Id;
+        entity!.Id = item.Id;
+
         var updatedAt = DateTime.UtcNow;
         entity.UpdatedAt = updatedAt;
+
         await itemRepository.UpdateAsync(entity);
+
         await kafkaProducer.ProduceAsync(new TaskEventMessage
         {
             EventType = eventType,
             UserItems = item.UserItems,
             Message = message,
         }, token);
-        var model = new SharedLibrary.Models.AnalyticModels.TaskHistoryModel
+
+        var model = new SharedLibrary.Models.TaskHistoryModel
         {
             FieldName = fieldName,
             OldValue = oldValue,
@@ -123,6 +183,7 @@ public class ItemManager(
             UserId = (int)auth.GetCurrentUserId()!,
             ChangedAt = updatedAt
         };
+
         await httpClient.PostAsJsonAsync("create", model, cancellationToken: token);
         return entity.Id;
     }
@@ -130,20 +191,37 @@ public class ItemManager(
     public async Task<int> AddUserToItemAsync(int newUserId, int itemId, CancellationToken cancellationToken)
     {
         var item = await itemRepository.GetByIdAsync(itemId);
+        if (item is null)
+            throw new ItemNotFoundException();
+
         await validatorManager.ValidateAddUserToItemAsync((int)item.ProjectId!, newUserId);
+
         var itemUserEntity = new UserItemEntity
         {
             ItemId = itemId,
             UserId = newUserId
         };
 
-        var oldValue = new List<UserItemEntity>(item.UserItems);
+        // Красиво собираем старый и новый список ID через запятую для истории
+        string oldUsersString = string.Join(", ", item.UserItems.Select(x => x.UserId));
+
         await itemRepository.AddUserToItemAsync(itemUserEntity);
         item.UserItems.Add(itemUserEntity);
-        await UpdateAsync(await ItemMapper.ToModel(item, userRepository), cancellationToken, 
-            $"В {item.Title} добавлен пользователь с айди {newUserId}", oldValue.ToString(), item.UserItems.ToString(), 
-            "UserItems", TaskEventType.AddedUser); //пока оставил список юзеров через тустринг, потому решу как правильно передавать старое и новое значение
-        //TODO ПРИДУМАТЬ!!!
+
+        string newUsersString = string.Join(", ", item.UserItems.Select(x => x.UserId));
+
+        var enrichedModel = await EnrichItemAsync(item);
+
+        await UpdateAsync(
+            enrichedModel,
+            cancellationToken,
+            $"В {item.Title} добавлен пользователь с айди {newUserId}",
+            oldUsersString,
+            newUsersString,
+            "UserItems",
+            TaskEventType.AddedUser
+        );
+
         return itemUserEntity.Id;
     }
 
@@ -151,9 +229,8 @@ public class ItemManager(
     {
         await validatorManager.ValidateUserInProjectAsync(projectId);
         var items = await itemRepository.GetItemsByProjectIdAsync(projectId);
-        var models = await Task.WhenAll(items.Where(x=>x.IsArchived).Select(x=>ItemMapper.ToModel(x, userRepository)));
-
-        return models;
+        var models = await EnrichItemsAsync(items.Where(x => x.IsArchived));
+        return models.ToList();
     }
 
     public async Task<ICollection<ItemModel>> GetArchievedItemsInBoard(int boardId)
@@ -161,18 +238,16 @@ public class ItemManager(
         var projectId = (await projectRepository.GetByBoardIdAsync(boardId)).Id;
         await validatorManager.ValidateUserInProjectAsync(projectId);
         var items = await itemRepository.GetItemsByBoardIdAsync(boardId);
-        var models = await Task.WhenAll(items.Where(x => x.IsArchived).Select(x=> ItemMapper.ToModel(x, userRepository)));
-
-        return models;
+        var models = await EnrichItemsAsync(items.Where(x => x.IsArchived));
+        return models.ToList();
     }
 
     public async Task<ICollection<ItemModel>> GetBugsItemsInProject(int projectId)
     {
         await validatorManager.ValidateUserInProjectAsync(projectId);
         var items = await itemRepository.GetItemsByProjectIdAsync(projectId);
-        var models = await Task.WhenAll(items.Where(x => x.ItemTypeId == ItemType.BUG).Select(x => ItemMapper.ToModel(x, userRepository)));
-
-        return models;
+        var models = await EnrichItemsAsync(items.Where(x => x.ItemTypeId == ItemType.BUG));
+        return models.ToList();
     }
 
     public async Task<ICollection<ItemModel>> GetBugsItemsInBoard(int boardId)
@@ -180,56 +255,56 @@ public class ItemManager(
         var projectId = (await projectRepository.GetByBoardIdAsync(boardId)).Id;
         await validatorManager.ValidateUserInProjectAsync(projectId);
         var items = await itemRepository.GetItemsByBoardIdAsync(boardId);
-        var models = await Task.WhenAll(items.Where(x => x.ItemTypeId == ItemType.BUG).Select(x => ItemMapper.ToModel(x, userRepository)));
-
-        return models;
+        var models = await EnrichItemsAsync(items.Where(x => x.ItemTypeId == ItemType.BUG));
+        return models.ToList();
     }
 
     public async Task<ICollection<ItemModel>> GetByProjectIdAsync(int projectId)
     {
         await validatorManager.ValidateUserInProjectAsync(projectId);
         var items = await itemRepository.GetItemsByProjectIdAsync(projectId);
-        var models = await Task.WhenAll(items.Select(x=> ItemMapper.ToModel(x, userRepository)));
-        return models;
+        var models = await EnrichItemsAsync(items);
+        return models.ToList();
     }
 
     public async Task<ItemModel> GetByTitle(string title)
     {
-        return await ItemMapper.ToModel(await itemRepository.GetByNameAsync(title), userRepository);
+        var entity = await itemRepository.GetByNameAsync(title);
+        return await EnrichItemAsync(entity);
     }
-
 
     public async Task<ICollection<ItemModel>> GetCurrentUserItems()
     {
         var userId = auth.GetCurrentUserId();
-        if (userId is null || userId == -1) throw new NotAuthorizedException();
+        if (userId is null || userId == -1)
+            throw new NotAuthorizedException();
         var items = await itemRepository.GetCurrentUserItemsAsync((int)userId);
-        var models = await Task.WhenAll(items.Select(x=> ItemMapper.ToModel(x, userRepository)));
-
-        return models;
+        var models = await EnrichItemsAsync(items);
+        return models.ToList();
     }
 
     public async Task<ICollection<ItemModel>> GetItemsByUserId(int userId, int projectId)
     {
         await validatorManager.ValidateAddUserToItemAsync(projectId, userId);
         var items = await itemRepository.GetItemsByUserIdAsync(userId, projectId);
-        var models = await Task.WhenAll(items.Select(x=> ItemMapper.ToModel(x, userRepository)));
-
-        return models;
+        var models = await EnrichItemsAsync(items);
+        return models.ToList();
     }
 
     public async Task<int> AddCommentToItemAsync(CommentModel commentModel, IFormFile? attachment)
     {
         var userId = auth.GetCurrentUserId();
-        if (userId is null || userId == -1) throw new NotAuthorizedException();
-        
+        if (userId is null || userId == -1)
+            throw new NotAuthorizedException();
+
         var item = await itemRepository.GetByIdAsync(commentModel.ItemId);
-        if (item is null) throw new ItemNotFoundException();
+        if (item is null)
+            throw new ItemNotFoundException();
 
         await validatorManager.ValidateUserInProjectAsync(item.ProjectId);
         var commentEntity = CommentMapper.ToEntity(commentModel);
 
-        commentEntity.AuthorId = (int)userId;
+        commentEntity!.AuthorId = (int)userId;
 
         await commentRepository.CreateAsync(commentEntity);
 
@@ -238,12 +313,11 @@ public class ItemManager(
             var docPath = Environment.GetEnvironmentVariable("ATTACHMENT_STORAGE_PATH");
 
             if (string.IsNullOrEmpty(docPath))
-                throw new ArgumentNullException("Переменная окружения ATTACHMENT_STORAGE_PATH не задана");
+                throw new ArgumentNullException(nameof(attachment), "Переменная окружения ATTACHMENT_STORAGE_PATH не задана");
 
             Directory.CreateDirectory(docPath);
 
             var uniqueFileName = $"{Guid.NewGuid()}_{attachment.FileName}";
-
             var filePath = Path.Combine(docPath, uniqueFileName);
 
             await using (var stream = new FileStream(filePath, FileMode.Create))
@@ -253,26 +327,24 @@ public class ItemManager(
 
             docPath = $"/attachments/{uniqueFileName}";
 
-            var attachmentEntity = new AttachmentEntity 
-            { 
-                AuthorId = (int)userId ,
+            var attachmentEntity = new AttachmentEntity
+            {
+                AuthorId = (int)userId,
                 UploadedAt = DateTime.UtcNow,
                 CommentId = commentEntity.Id,
                 FilePath = docPath,
             };
 
             await attachmentRepository.CreateAsync(attachmentEntity);
-
-           
         }
 
-        var model = new SharedLibrary.Models.AnalyticModels.TaskHistoryModel
+        var model = new SharedLibrary.Models.TaskHistoryModel
         {
             FieldName = "Комментарий",
             OldValue = "",
             NewValue = commentModel.Text,
             ItemId = item.Id,
-            UserId = (int)auth.GetCurrentUserId()!,
+            UserId = (int)userId,
             ChangedAt = DateTime.UtcNow
         };
 
@@ -284,19 +356,28 @@ public class ItemManager(
     public async Task<ICollection<CommentModel>> GetComments(int itemId)
     {
         var userId = auth.GetCurrentUserId();
-        if (userId is null || userId == -1) throw new NotAuthorizedException();
+        if (userId is null || userId == -1)
+            throw new NotAuthorizedException();
 
         var item = await itemRepository.GetByIdAsync(itemId);
-        if (item is null) throw new ItemNotFoundException();
+        if (item is null)
+            throw new ItemNotFoundException();
 
         await validatorManager.ValidateUserInProjectAsync(item.ProjectId);
 
         var comments = commentRepository.GetByItemId(itemId);
 
-        var commentsModels = await Task.WhenAll(
-            comments.Select(c => CommentMapper.ToModel(c, userRepository))
-        );
+        var authorIds = comments.Select(c => c.AuthorId).Distinct().ToList();
+        var cache = new Dictionary<int, string>();
+        foreach (var id in authorIds)
+        {
+            var user = await userRepository.GetUserAsync(id);
+            if (user != null)
+                cache[id] = user.Username;
+        }
 
-        return commentsModels.ToList();
+        var commentsModels = comments.Select(c => CommentMapper.ToModel(c, cache)).ToList();
+
+        return commentsModels;
     }
 }

@@ -2,8 +2,8 @@
 using ProjectService.DataLayer.Repositories.Abstractions;
 using ProjectService.Exceptions;
 using ProjectService.Mapper;
-using SharedLibrary.Auth;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
+using SharedLibrary.Entities.ProjectService;
 using SharedLibrary.Models;
 
 namespace ProjectService.BusinessLayer.Implementations;
@@ -16,8 +16,12 @@ public class SprintManager : ISprintManager
     private readonly IValidateSprintManager _validatorManager;
     private readonly IUserRepository userRepository;
 
-    public SprintManager(ISprintRepository sprintRepository, IBoardRepository boardRepository,
-        IItemRepository itemRepository, IValidateSprintManager validatorManager, IUserRepository userRepository)
+    public SprintManager(
+        ISprintRepository sprintRepository,
+        IBoardRepository boardRepository,
+        IItemRepository itemRepository,
+        IValidateSprintManager validatorManager,
+        IUserRepository userRepository)
     {
         this.sprintRepository = sprintRepository;
         this.boardRepository = boardRepository;
@@ -26,10 +30,77 @@ public class SprintManager : ISprintManager
         this.userRepository = userRepository;
     }
 
+    #region Вспомогательные методы пакетной загрузки пользователей (Победа над N+1)
+
+    private async Task<SprintModel> EnrichSprintAsync(SprintEntity entity)
+    {
+        if (entity is null)
+            return null!;
+
+        var userIds = new HashSet<int>();
+        if (entity.Items != null)
+        {
+            foreach (var item in entity.Items)
+            {
+                if (item.AuthorId.HasValue)
+                    userIds.Add(item.AuthorId.Value);
+                if (item.UserItems != null)
+                {
+                    foreach (var ui in item.UserItems)
+                        userIds.Add(ui.UserId);
+                }
+            }
+        }
+
+        var cache = new Dictionary<int, string>();
+        foreach (var id in userIds)
+        {
+            var user = await userRepository.GetUserAsync(id);
+            if (user != null)
+                cache[id] = user.Username;
+        }
+
+        return SprintMapper.ToModel(entity, cache)!;
+    }
+
+    private async Task<IEnumerable<SprintModel>> EnrichSprintsAsync(IEnumerable<SprintEntity> entities)
+    {
+        var entityList = entities.ToList();
+        var userIds = new HashSet<int>();
+
+        foreach (var sprint in entityList)
+        {
+            if (sprint.Items == null)
+                continue;
+            foreach (var item in sprint.Items)
+            {
+                if (item.AuthorId.HasValue)
+                    userIds.Add(item.AuthorId.Value);
+                if (item.UserItems != null)
+                {
+                    foreach (var ui in item.UserItems)
+                        userIds.Add(ui.UserId);
+                }
+            }
+        }
+
+        var cache = new Dictionary<int, string>();
+        foreach (var id in userIds)
+        {
+            var user = await userRepository.GetUserAsync(id);
+            if (user != null)
+                cache[id] = user.Username;
+        }
+
+        return entityList.Select(x => SprintMapper.ToModel(x, cache)!).ToList();
+    }
+
+    #endregion
+
     public async Task AddItem(int sprintId, int itemId)
     {
         var existingSprint = await sprintRepository.GetByIdAsync(sprintId);
-        
+
         if (existingSprint is null)
             throw new SprintNotFoundException();
 
@@ -40,6 +111,7 @@ public class SprintManager : ISprintManager
 
         if (existingItem.ProjectId != existingSprint.Board.ProjectId)
             throw new DifferentAreaException();
+
         await _validatorManager.ValidateUserInProjectAsync(existingSprint.Board.ProjectId);
 
         await sprintRepository.AddItem(sprintId, itemId);
@@ -67,9 +139,9 @@ public class SprintManager : ISprintManager
 
         if (existingSprint is null)
             throw new SprintNotFoundException();
-        
+
         await _validatorManager.ValidateUserInProjectAsync(existingSprint.Board.ProjectId);
-        
+
         await sprintRepository.DeleteAsync(id);
     }
 
@@ -79,13 +151,12 @@ public class SprintManager : ISprintManager
 
         if (existingBoard is null)
             throw new BoardNotFoundException();
-        
+
         await _validatorManager.ValidateUserInProjectAsync(existingBoard.ProjectId);
 
         var entities = await sprintRepository.GetByBoardId(boardId);
-        var models = await Task.WhenAll(entities.Select(x=>SprintMapper.ToModel(x, userRepository)));
 
-        return models;
+        return await EnrichSprintsAsync(entities);
     }
 
     public async Task<SprintModel> GetByIdAsync(int id)
@@ -97,10 +168,7 @@ public class SprintManager : ISprintManager
 
         await _validatorManager.ValidateUserInProjectAsync(existingSprint.Board.ProjectId);
 
-
-        var sprint = await sprintRepository.GetByIdAsync(id);
-
-        return await SprintMapper.ToModel(sprint, userRepository);
+        return await EnrichSprintAsync(existingSprint);
     }
 
     public async Task<int?> UpdateAsync(SprintModel sprintModel)
