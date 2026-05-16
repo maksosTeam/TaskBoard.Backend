@@ -29,8 +29,6 @@ public class ItemManager(
     HttpClient httpClient,
     IAuth auth) : IItemManager
 {
-    #region Вспомогательные методы пакетной загрузки (Победа над N+1)
-
     private async Task<ItemModel> EnrichItemAsync(ItemEntity entity)
     {
         var userIds = new HashSet<int>();
