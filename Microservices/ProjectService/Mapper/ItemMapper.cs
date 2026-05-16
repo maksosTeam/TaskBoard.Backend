@@ -1,8 +1,5 @@
 ﻿using SharedLibrary.Constants;
-using SharedLibrary.Dapper.DapperRepositories;
-using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.Entities.ProjectService;
-using SharedLibrary.Entities.UserService;
 using SharedLibrary.Models;
 
 namespace ProjectService.Mapper;
@@ -30,14 +27,17 @@ public static class ItemMapper
             ItemTypeId = item.ItemTypeId,
             StatusId = (int)item.StatusId!,
             IsArchived = item.IsArchived,
-            UserItems = item.UserItems != null 
-                ? item.UserItems.Select(UserItemMapper.ToEntity).ToList() 
+            UserItems = item.UserItems != null
+                ? item.UserItems.Select(UserItemMapper.ToEntity).ToList()
                 : new List<UserItemEntity>(),
             MergeLink = item.MergeLink
         };
     }
 
-    public static async Task<ItemModel?> ToModel(ItemEntity? item, IUserRepository userRepository)
+    /// <summary>
+    /// Синхронный маппинг в модель с использованием переданного кэша пользователей (решает проблему N+1)
+    /// </summary>
+    public static ItemModel? ToModel(ItemEntity? item, Dictionary<int, string> userNamesCache)
     {
         if (item is null)
             return null;
@@ -60,28 +60,42 @@ public static class ItemMapper
             StatusId = item.StatusId,
             IsArchived = item.IsArchived,
             Status = StatusMapper.ToModel(item.Status),
-            UserItems = item.UserItems.Select(UserItemMapper.ToModel).ToList(),
+            UserItems = item.UserItems?.Select(UserItemMapper.ToModel).ToList() ?? new List<UserItemModel>(),
             MergeLink = item.MergeLink
         };
 
-        if(item.ItemsBoards.Count > 0)
+        if (item.ItemsBoards != null && item.ItemsBoards.Count > 0)
         {
-            var boardId = item.ItemsBoards.First(x => x.ItemId == model.Id).BoardId;
-
-            model.SetBoardId(boardId);
-        }
-
-        if (item.UserItems != null && item.UserItems.Count > 0)
-        {
-            foreach (var userItem in item.UserItems)
+            var boardBound = item.ItemsBoards.FirstOrDefault(x => x.ItemId == model.Id);
+            if (boardBound != null)
             {
-                var user = await userRepository.GetUserAsync(userItem.UserId);
-                model.AddContributor(user.Username);
+                model.SetBoardId(boardBound.BoardId);
             }
         }
 
-        var author = await userRepository.GetUserAsync((int)item.AuthorId!);
-        model.SetAuthor(author!.Username);
+        if (item.UserItems != null)
+        {
+            foreach (var userItem in item.UserItems)
+            {
+                if (userNamesCache.TryGetValue(userItem.UserId, out var username))
+                {
+                    model.AddContributor(username);
+                }
+                else
+                {
+                    model.AddContributor($"User_ID_{userItem.UserId}");
+                }
+            }
+        }
+
+        if (item.AuthorId.HasValue && userNamesCache.TryGetValue(item.AuthorId.Value, out var authorName))
+        {
+            model.SetAuthor(authorName);
+        }
+        else
+        {
+            model.SetAuthor(item.AuthorId?.ToString() ?? "Unknown");
+        }
 
         return model;
     }
