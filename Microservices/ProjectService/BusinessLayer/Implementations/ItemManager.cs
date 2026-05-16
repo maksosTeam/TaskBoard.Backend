@@ -80,8 +80,6 @@ public class ItemManager(
         return entityList.Select(x => ItemMapper.ToModel(x, cache)!).ToList();
     }
 
-    #endregion
-
     public async Task<int> CreateAsync(CreateItemModel createItemModel, CancellationToken token)
     {
         await validatorManager.ValidateCreateAsync(createItemModel);
