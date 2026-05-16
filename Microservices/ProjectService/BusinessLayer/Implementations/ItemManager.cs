@@ -1,19 +1,16 @@
-﻿using Kafka.Messaging;
-using ProjectService.BusinessLayer.Abstractions;
+﻿using ProjectService.BusinessLayer.Abstractions;
 using ProjectService.DataLayer.Repositories.Abstractions;
 using ProjectService.Exceptions;
-using ProjectService.Kafka.Abstractions;
 using ProjectService.Mapper;
 using ProjectService.Models;
 using SharedLibrary.Auth;
 using SharedLibrary.Entities.ProjectService;
 using SharedLibrary.Constants;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
-using SharedLibrary.Models.AnalyticModels;
 using SharedLibrary.Models.KafkaModel;
 using SharedLibrary.Models;
 using SharedLibrary.Entities;
-using System.Net.Http.Json;
+using Kafka.Messaging.Services.Abstractions;
 
 namespace ProjectService.BusinessLayer.Implementations;
 
@@ -25,10 +22,7 @@ public class ItemManager(
     ICommentRepository commentRepository,
     IAttachmentRepository attachmentRepository,
     IUserRepository userRepository,
-    IMessageHandler<TaskEventMessage> messageHandler,
-    /*
     IKafkaProducer<TaskEventMessage> kafkaProducer,
-    */
     HttpClient httpClient,
     IAuth auth) : IItemManager
 {
@@ -166,7 +160,7 @@ public class ItemManager(
 
         await itemRepository.UpdateAsync(entity);
 
-        await messageHandler.HandleAsync(new TaskEventMessage
+        await kafkaProducer.ProduceAsync(new TaskEventMessage
         {
             EventType = eventType,
             UserItems = item.UserItems,

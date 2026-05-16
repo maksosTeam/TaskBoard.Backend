@@ -1,6 +1,7 @@
 ﻿using Kafka.Messaging;
+using Kafka.Messaging.Services.Abstractions;
 using Microsoft.AspNetCore.SignalR;
-using ProjectService.Kafka.Abstractions;
+using Microsoft.Extensions.Logging;
 using SharedLibrary.Constants;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.MailService;
