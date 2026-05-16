@@ -45,6 +45,11 @@ internal class Program
 
         var avatarPath = Environment.GetEnvironmentVariable("AVATAR_STORAGE_PATH");
 
+        if (!Directory.Exists(avatarPath))
+        {
+            Directory.CreateDirectory(avatarPath);
+        }
+
         app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(avatarPath),
