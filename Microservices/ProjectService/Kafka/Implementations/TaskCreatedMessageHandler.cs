@@ -1,16 +1,18 @@
-﻿using Kafka.Messaging.Services.Abstractions;
-using Microsoft.Extensions.Logging;
+﻿using Kafka.Messaging;
+using Microsoft.AspNetCore.SignalR;
+using ProjectService.Kafka.Abstractions;
 using SharedLibrary.Constants;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.MailService;
 using SharedLibrary.Models.KafkaModel;
 
-namespace Kafka.Messaging.Services.Implementations
+namespace ProjectService.Kafka.Implementations
 {
     public class TaskEventMessageHandler(
         ILogger<TaskEventMessageHandler> logger,
         IUserRepository userRepository,
-        IEmailSender mailService
+        IEmailSender mailService,
+        IHubContext<NotificationHub> hubContext 
     ) : IMessageHandler<TaskEventMessage>
     {
         public async Task HandleAsync(TaskEventMessage message, CancellationToken cancellationToken)
@@ -24,9 +26,9 @@ namespace Kafka.Messaging.Services.Implementations
                 return;
             }
 
-            var userIds = item.Select(x => x.UserId).Distinct();
-            var tasks = new List<Task>();
-            var toList = new List<string>();
+            var userIds = item.Select(x => x.UserId).Distinct().ToList();
+            var emailToList = new List<string>();
+
             foreach (var id in userIds)
             {
                 logger.LogInformation($"Processing user with ID: {id}");
@@ -36,16 +38,29 @@ namespace Kafka.Messaging.Services.Implementations
                     logger.LogWarning($"User with ID {id} not found.");
                     continue;
                 }
-                toList.Add(user.Email);
+                emailToList.Add(user.Email);
             }
             
             var subject = GetSubject(message.EventType);
             var body = $"Task update:\n{string.Join("\n", message.Message)}";
-            tasks.Add(mailService.SendEmailAsync(subject, body, toList.ToArray()));
-            
-            await Task.WhenAll(tasks);
-        }
 
+            var notificationTasks = new List<Task>();
+
+            if (emailToList.Any())
+            {
+                notificationTasks.Add(mailService.SendEmailAsync(subject, body, emailToList.ToArray()));
+            }
+            
+            var stringUserIds = userIds.Select(id => id.ToString()).ToList();
+            
+            notificationTasks.Add(hubContext.Clients.Users(stringUserIds).SendAsync(
+                "ReceiveTaskNotification", 
+                new { eventType = message.EventType.ToString(), message = message.Message }, 
+                cancellationToken
+            ));
+            
+            await Task.WhenAll(notificationTasks);
+        }
 
         private static string GetSubject(TaskEventType type) => type switch
         {

@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Shared\Kafka\Kafka.Messaging.csproj" />
     <ProjectReference Include="..\..\Shared\SharedLibrary\SharedLibrary.csproj" />
   </ItemGroup>
 

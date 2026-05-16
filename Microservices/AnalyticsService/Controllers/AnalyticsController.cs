@@ -2,8 +2,6 @@ using AnalyticsService.BusinessLayer.Abstractions;
 using AnalyticsService.BusinessLayer.Implementations;
 using AnalyticsService.Models;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using SharedLibrary.Models.AnalyticModels;
 
 namespace AnalyticsService.Controllers
 {
