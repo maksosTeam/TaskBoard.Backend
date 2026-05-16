@@ -49,20 +49,30 @@ internal class Program
         app.UseSwagger();
         app.UseSwaggerUI();
 
+        /*
+         * СТАТИЧЕСКИЕ ФАЙЛЫ И ХРАНИЛИЩА
+         */
         var documentPath = Environment.GetEnvironmentVariable("DOCUMENT_STORAGE_PATH");
         var attachmentPath = Environment.GetEnvironmentVariable("ATTACHMENT_STORAGE_PATH");
 
-        app.UseStaticFiles(new StaticFileOptions
+        // Защита от падения: инициализируем провайдеры только если пути указаны в env
+        if (!string.IsNullOrWhiteSpace(documentPath))
         {
-            FileProvider = new PhysicalFileProvider(documentPath),
-            RequestPath = "/documents"
-        });
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(documentPath),
+                RequestPath = "/documents"
+            });
+        }
 
-        app.UseStaticFiles(new StaticFileOptions
+        if (!string.IsNullOrWhiteSpace(attachmentPath))
         {
-            FileProvider = new PhysicalFileProvider(attachmentPath),
-            RequestPath = "/attachments"
-        });
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(attachmentPath),
+                RequestPath = "/attachments"
+            });
+        }
 
         app.UseMiddleware<JwtBlacklistMiddleware>();
         
@@ -79,16 +89,31 @@ internal class Program
     private static void ConfigureServices(IServiceCollection services, IConfigurationManager configuration)
     {
         services.Configure<MailSettings>(configuration.GetSection("MailSettings"));
-        services.Configure<KafkaSettings>(configuration.GetSection("Kafka:NotificationTask"));
+        
+        /*
+         * KAFKA SETTINGS
+         */
+        // Достаем адрес сервера напрямую из env (используем ту же переменную, что и в аналитике, либо дефолт)
+        var bootstrapServers = Environment.GetEnvironmentVariable("KAFKA__GETITEMSBYPROJECTREQUEST__BOOTSTRAPSERVERS") ?? "kafka:29092";
+
+        services.Configure<KafkaSettings>(options =>
+        {
+            // Биндим тему и настройки из секции Kafka:NotificationTask
+            configuration.GetSection("Kafka:NotificationTask").Bind(options);
+            // Принудительно прописываем корректный BootstrapServers во избежание сбоя маппинга регистра букв
+            options.BootstrapServers = bootstrapServers;
+        });
+
         services.AddTransient<ForwardAccessTokenHandler>();
         services.AddScoped<IEmailSender, EmailSender>();
         services.AddScoped<IMailService, MailService>();
-        services.AddScoped<IBoardManager, BoardManager>();
         services.AddScoped<IProjectLinkManager, ProjectLinkManager>();
         services.AddScoped<IGitHubWebhookService, GitHubWebhookService>();    
+        
         services.AddHttpClient<IItemManager, ItemManager>
             (client => client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("ANALYTICS_SERVICE") + "/analytics/"))
             .AddHttpMessageHandler<ForwardAccessTokenHandler>();
+            
         services.AddScoped<IValidateBoardManager, ValidateBoardManager>();
         services.AddScoped<IValidateItemManager, ValidateItemManager>();
         services.AddScoped<IValidateDocumentManager, ValidateDocumentManager>();
@@ -99,10 +124,11 @@ internal class Program
         services.AddScoped<IItemRepository, ItemRepository>();
         services.AddScoped<IContributorsRepository, ContributorsRepository>();
         services.AddScoped<IContributorsManager, ContributorsManager>();
-        services.AddScoped<IBoardRepository, BoardRepository>();
-        services.AddScoped<IProjectRepository, ProjectRepository>();
+        
+        // Очищены дубликаты регистраций IBoardManager и IBoardRepository, которые шли дважды подряд
         services.AddScoped<IBoardManager, BoardManager>();
         services.AddScoped<IBoardRepository, BoardRepository>();
+        
         services.AddScoped<IUserProjectManager, UserProjectManager>();
         services.AddScoped<IUserProjectRepository, UserProjectRepository>();
         services.AddScoped<IItemTypeManager, ItemTypeManager>();
@@ -116,6 +142,7 @@ internal class Program
         services.AddScoped<IDocumentRepository, DocumentRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
+        
         services.AddSingleton<IHostedService, KafkaConsumer<TaskEventMessage>>();
         services.AddScoped<IAuth, Auth>();
         services.AddSingleton<IBlackListService, BlackListService>();
@@ -163,7 +190,7 @@ internal class Program
                             Id = "Bearer"
                         }
                     },
-                    new string[] {}
+                    Array.Empty<string>()
                 }
             });
 
@@ -174,7 +201,9 @@ internal class Program
 
         services.AddSingleton<IKafkaProducer<TaskEventMessage>, KafkaProducer<TaskEventMessage>>();
 
-
+        /*
+         * DATABASE CONFIGURATION
+         */
         var host = Environment.GetEnvironmentVariable("HOST");
         var port = Environment.GetEnvironmentVariable("PORT");
         var database = Environment.GetEnvironmentVariable("POSTGRES_DB");
@@ -191,7 +220,6 @@ internal class Program
         services.AddScoped<IUserRepository>(provider => new UserRepository(userConnection));
 
         DbContextInitializer.Initialize(services, conn);
-
     }
 
     private static void AddAuthentication(IServiceCollection services, IConfigurationManager configuration)
