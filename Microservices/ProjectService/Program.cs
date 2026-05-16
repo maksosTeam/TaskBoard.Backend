@@ -94,7 +94,7 @@ internal class Program
          * KAFKA SETTINGS
          */
         // Достаем адрес сервера напрямую из env (используем ту же переменную, что и в аналитике, либо дефолт)
-        var bootstrapServers = Environment.GetEnvironmentVariable("KAFKA__GETITEMSBYPROJECTREQUEST__BOOTSTRAPSERVERS") ?? "kafka:29092";
+        /*var bootstrapServers = Environment.GetEnvironmentVariable("KAFKA__GETITEMSBYPROJECTREQUEST__BOOTSTRAPSERVERS") ?? "kafka:29092";
 
         services.Configure<KafkaSettings>(options =>
         {
@@ -102,7 +102,7 @@ internal class Program
             configuration.GetSection("Kafka:NotificationTask").Bind(options);
             // Принудительно прописываем корректный BootstrapServers во избежание сбоя маппинга регистра букв
             options.BootstrapServers = bootstrapServers;
-        });
+        });*/
 
         services.AddTransient<ForwardAccessTokenHandler>();
         services.AddScoped<IEmailSender, EmailSender>();
@@ -143,7 +143,9 @@ internal class Program
         services.AddScoped<ICommentRepository, CommentRepository>();
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
         
+        /*
         services.AddSingleton<IHostedService, KafkaConsumer<TaskEventMessage>>();
+        */
         services.AddScoped<IAuth, Auth>();
         services.AddSingleton<IBlackListService, BlackListService>();
         services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
@@ -199,7 +201,9 @@ internal class Program
             options.IncludeXmlComments(xmlPath);
         });
 
+        /*
         services.AddSingleton<IKafkaProducer<TaskEventMessage>, KafkaProducer<TaskEventMessage>>();
+        */
 
         /*
          * DATABASE CONFIGURATION
