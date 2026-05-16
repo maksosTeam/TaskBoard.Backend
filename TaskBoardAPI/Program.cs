@@ -38,12 +38,12 @@ internal class Program
             c.SwaggerEndpoint("/user/swagger/v1/swagger.json", "User Service");
         });
 
-        app.MapReverseProxy();
-
         app.UseAuthorization();
+        app.UseAuthentication();
 
         app.UseMiddleware<JwtBlacklistMiddleware>();
 
+        app.MapReverseProxy();
         app.MapControllers();
 
         app.Run();
