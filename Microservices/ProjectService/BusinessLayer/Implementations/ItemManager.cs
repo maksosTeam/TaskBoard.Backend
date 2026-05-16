@@ -25,6 +25,7 @@ public class ItemManager(
     ICommentRepository commentRepository,
     IAttachmentRepository attachmentRepository,
     IUserRepository userRepository,
+    IMessageHandler<TaskEventMessage> messageHandler,
     IKafkaProducer<TaskEventMessage> kafkaProducer,
     HttpClient httpClient,
     IAuth auth) : IItemManager
@@ -163,7 +164,7 @@ public class ItemManager(
 
         await itemRepository.UpdateAsync(entity);
 
-        await kafkaProducer.ProduceAsync(new TaskEventMessage
+        await messageHandler.HandleAsync(new TaskEventMessage
         {
             EventType = eventType,
             UserItems = item.UserItems,
