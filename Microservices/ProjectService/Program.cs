@@ -138,7 +138,6 @@ internal class Program
             });
         });
 
-        services.AddSignalR();
         AddAuthentication(services, configuration);
 
         services.AddControllers();
