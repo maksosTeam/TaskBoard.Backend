@@ -11,6 +11,7 @@ public class GitHubWebhookService(IItemManager itemManager, IStatusManager statu
 
     public async Task<bool> ProcessPullRequestAsync(string action, string title, string htmlUrl, CancellationToken cancellationToken = default)
     {
+        //test
         Console.WriteLine("move task to review status");
         if (action != "opened" && action != "reopened")
         {
