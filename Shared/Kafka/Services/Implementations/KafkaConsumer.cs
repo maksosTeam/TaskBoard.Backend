@@ -10,68 +10,82 @@ namespace Kafka.Messaging.Services.Implementations
 {
     public class KafkaConsumer<TMessage> : BackgroundService
     {
-        private readonly string topic;
-        private readonly IConsumer<string, TMessage> consumer;
-        private readonly IServiceScopeFactory scopeFactory;
+        private readonly IOptionsMonitor<KafkaSettings> _optionsMonitor;
+        private readonly IServiceScopeFactory _scopeFactory;
+        private readonly string _configName;
 
-        public KafkaConsumer(IOptions<KafkaSettings> kafkaSettings, IServiceScopeFactory scopeFactory)
+        public KafkaConsumer(IOptionsMonitor<KafkaSettings> optionsMonitor, IServiceScopeFactory scopeFactory)
         {
-            var config = new ConsumerConfig()
-            {
-                BootstrapServers = kafkaSettings.Value?.BootstrapServers,
-                GroupId = kafkaSettings.Value?.GroupId
-            };
-
-            topic = kafkaSettings.Value?.Topic;
-
-            consumer = new ConsumerBuilder<string, TMessage>(config)
-                .SetValueDeserializer(new KafkaValueDeserealizer<TMessage>())
-                .Build();
-
-            this.scopeFactory = scopeFactory;
+            _optionsMonitor = optionsMonitor;
+            _scopeFactory = scopeFactory;
+            _configName = typeof(TMessage).Name;
         }
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            return Task.Run(() => ConsumeAsync(stoppingToken), stoppingToken);
+            return Task.Run(() => StartConsumerLoop(stoppingToken), stoppingToken);
         }
 
-        private async Task ConsumeAsync(CancellationToken stoppingToken)
+        private async Task StartConsumerLoop(CancellationToken stoppingToken)
         {
-            Trace.TraceInformation("Subscribed to Kafka topic: " + topic);
+            var settings = _optionsMonitor.Get(_configName);
 
-            consumer.Subscribe(topic);
+            if (settings == null || string.IsNullOrEmpty(settings.BootstrapServers) || string.IsNullOrEmpty(settings.GroupId))
+            {
+                Trace.TraceError($"[Kafka: {_configName}] Критическая ошибка: Конфигурация не найдена или не заполнена! Консьюмер не запущен.");
+                return;
+            }
+
+            var config = new ConsumerConfig
+            {
+                BootstrapServers = settings.BootstrapServers,
+                GroupId = settings.GroupId,
+                AutoOffsetReset = AutoOffsetReset.Earliest 
+            };
 
             try
             {
+                using var consumer = new ConsumerBuilder<string, TMessage>(config)
+                    .SetValueDeserializer(new KafkaValueDeserealizer<TMessage>())
+                    .Build();
+
+                consumer.Subscribe(settings.Topic);
+                Trace.TraceInformation($"[Kafka: {_configName}] Успешно подписались на топик: {settings.Topic}");
+
                 while (!stoppingToken.IsCancellationRequested)
                 {
-                    var result = consumer.Consume(stoppingToken);
+                    try
+                    {
+                        var result = consumer.Consume(stoppingToken);
 
-                    if (result is null)
-                        throw new ArgumentNullException();
+                        if (result == null || result.Message.Value == null)
+                            continue;
 
-                    Console.WriteLine("GOT MESSAGE!");
+                        Console.WriteLine($"[Kafka: {_configName}] ПОЛУЧЕНО СООБЩЕНИЕ!");
+                        Trace.TraceInformation($"[Kafka: {_configName}] Message received: " + result.Message.Value.ToString());
 
-                    Trace.TraceInformation("Message received: " + result.Message.Value!.ToString());
+                        using var scope = _scopeFactory.CreateScope();
+                        var messageHandler = scope.ServiceProvider.GetRequiredService<IMessageHandler<TMessage>>();
 
-                    // Создаем scope, чтобы получить scoped сервис IMessageHandler<TMessage>
-                    using var scope = scopeFactory.CreateScope();
-                    var messageHandler = scope.ServiceProvider.GetRequiredService<IMessageHandler<TMessage>>();
-                    
-                    await messageHandler.HandleAsync(result.Message.Value, stoppingToken);
+                        // Обрабатываем сообщение
+                        await messageHandler.HandleAsync(result.Message.Value, stoppingToken);
+                    }
+                    catch (ConsumeException ex)
+                    {
+                        Trace.TraceError($"[Kafka: {_configName}] Ошибка чтения сообщения: {ex.Error.Reason}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.TraceError($"[Kafka: {_configName}] Ошибка во время обработки сообщения: {ex.Message}");
+                    }
                 }
+
+                consumer.Close();
             }
             catch (Exception ex)
             {
-                Trace.TraceError(ex.Message);
+                Trace.TraceError($"[Kafka: {_configName}] Не удалось инициализировать или запустить консьюмер: {ex.Message}");
             }
-        }
-
-        public override Task StopAsync(CancellationToken cancellationToken)
-        {
-            consumer.Close();
-            return base.StopAsync(cancellationToken);
         }
     }
 }

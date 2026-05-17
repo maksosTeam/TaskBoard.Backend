@@ -10,35 +10,35 @@ namespace Kafka.Messaging.Services.Implementations
         private readonly IProducer<string, TMessage> producer;
         private readonly string topic;
 
-        public KafkaProducer(IOptions<KafkaSettings> kafkaSettings)
+        public KafkaProducer(IOptionsMonitor<KafkaSettings> optionsMonitor)
         {
+            var configName = typeof(TMessage).Name;
+            var settings = optionsMonitor.Get(configName);
+
             var config = new ProducerConfig
             {
-                BootstrapServers = kafkaSettings.Value.BootstrapServers
+                BootstrapServers = settings?.BootstrapServers ?? throw new ArgumentNullException($"BootstrapServers для {configName} не настроен.")
             };
 
             producer = new ProducerBuilder<string, TMessage>(config)
                 .SetValueSerializer(new KafkaJsonSerializer<TMessage>())
                 .Build();
 
-            topic = kafkaSettings.Value.Topic;
+            topic = settings.Topic;
         }
+
         public async Task ProduceAsync(TMessage message, CancellationToken cancellationToken)
         {
             await producer.ProduceAsync(
                 topic,
-                new Message<string, TMessage>
-                {
-                    Key = "1",
-                    Value = message
-                },
+                new Message<string, TMessage> { Key = Guid.NewGuid().ToString(), Value = message },
                 cancellationToken);
         }
+
         public void Dispose()
         {
             producer?.Dispose();
             GC.SuppressFinalize(this);
         }
-
     }
 }
