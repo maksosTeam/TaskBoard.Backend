@@ -48,7 +48,7 @@ public class AiManager(HttpClient httpClient, IConfiguration configuration) : IA
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, Url);
-        Console.WriteLine(_apiKey);
+        Console.WriteLine(_apiKey); //test
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
         request.Headers.Add("HTTP-Referer", "https://project-domain.ru/"); 
         request.Content = JsonContent.Create(requestBody);
