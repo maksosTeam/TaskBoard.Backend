@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using DotNetEnv;
+using Kafka.Messaging;
 using Kafka.Messaging.Services.Abstractions;
 using Kafka.Messaging.Services.Implementations;
 using Kafka.Messaging.Settings;
@@ -169,8 +170,8 @@ internal class Program
             options.IncludeXmlComments(xmlPath);
         });
 
-        services.AddSingleton<IKafkaProducer<TaskEventMessage>, KafkaProducer<TaskEventMessage>>();
-
+        services.AddConsumer<TaskEventMessage, TaskEventMessageHandler>(configuration);
+        services.AddProducer<TaskEventMessage>(configuration);
 
         var host = Environment.GetEnvironmentVariable("HOST");
         var port = Environment.GetEnvironmentVariable("PORT");
