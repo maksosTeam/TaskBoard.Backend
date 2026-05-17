@@ -10,6 +10,7 @@ using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.Entities.ProjectService; // Убедись, что этот namespace верный для ProjectEntity
 using SharedLibrary.Models;
 using SharedLibrary.ProjectModels;
+using SharedLibrary.UserModels;
 
 namespace ProjectService.BusinessLayer.Implementations;
 
@@ -236,28 +237,31 @@ public class ProjectManager(
 
         if (project is null)
             throw new ProjectNotFoundException();
-        var isCurrentUserInProject =
-            await userProjectManager.IsUserInProjectAsync((int)currentUserId!, project.Id);
-        
+
+        var isCurrentUserInProject = project.UserProjects.Any(x => x.UserId == currentUserId);
+    
         if (!isCurrentUserInProject)
             throw new NotAuthorizedException();
 
-        var users = (await userRepository
-            .GetUsersByIdsAsync(project.UserProjects.Select(x => x.UserId)
-                .ToArray()))
-            .ToList();
+        var userIds = project.UserProjects.Select(x => x.UserId).ToArray();
+    
+        var usersMap = (await userRepository.GetUsersByIdsAsync(userIds) ?? Array.Empty<UserModel>())
+            .ToDictionary(u => u.Id);
 
         var result = new List<GetUsersInProjectResponse>();
-        var userInProjects = project.UserProjects.ToList();
-        for (var i = 0; i < userInProjects.Count; i++)
+    
+        foreach (var userInProject in project.UserProjects)
         {
-            var userInfo = users[i];
-            result.Add(new GetUsersInProjectResponse(
-                UserId: userInfo.Id, 
-                UserName: userInfo.Username, 
-                ImagePath: userInfo.ImagePath, 
-                Email: userInfo.Email, 
-                Role: userInProjects[i].Role.Role));
+            if (usersMap.TryGetValue(userInProject.UserId, out var userInfo))
+            {
+                result.Add(new GetUsersInProjectResponse(
+                    UserId: userInfo.Id, 
+                    UserName: userInfo.Username, 
+                    ImagePath: userInfo.ImagePath, 
+                    Email: userInfo.Email, 
+                    Role: userInProject.Role?.Role ?? string.Empty
+                ));
+            }
         }
 
         return result;
