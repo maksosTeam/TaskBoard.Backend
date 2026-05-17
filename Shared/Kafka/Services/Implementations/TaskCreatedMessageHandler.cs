@@ -1,4 +1,6 @@
-﻿using Kafka.Messaging;
+﻿using System.Security.Claims;
+using System.Text;
+using Kafka.Messaging;
 using Kafka.Messaging.Services.Abstractions;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
@@ -13,21 +15,25 @@ namespace ProjectService.Kafka.Implementations
         ILogger<TaskEventMessageHandler> logger,
         IUserRepository userRepository,
         IEmailSender mailService,
-        IHubContext<NotificationHub> hubContext 
+        IHubContext<NotificationHub> hubContext
     ) : IMessageHandler<TaskEventMessage>
     {
         public async Task HandleAsync(TaskEventMessage message, CancellationToken cancellationToken)
         {
-            logger.LogInformation($"Received task event: {message.EventType} — {message.UserItems}");
+            if (message == null)
+                return;
 
-            var item = message.UserItems;
-            if (item == null || !item.Any())
+            logger.LogInformation($"Received task event: {message.EventType}");
+
+            var items = message.UserItems;
+            if (items == null || !items.Any())
             {
                 logger.LogWarning("No user items found in the message.");
                 return;
             }
 
-            var userIds = item.Select(x => x.UserId).Distinct().ToList();
+            // Получаем список уникальных ID пользователей
+            var userIds = items.Select(x => x.UserId).Distinct().ToList();
             var emailToList = new List<string>();
 
             foreach (var id in userIds)
@@ -41,32 +47,38 @@ namespace ProjectService.Kafka.Implementations
                 }
                 emailToList.Add(user.Email);
             }
-            
+
             var subject = GetSubject(message.EventType);
             var body = $"Task update:\n{string.Join("\n", message.Message)}";
 
             var notificationTasks = new List<Task>();
 
+            // 1. Отправка Email
             if (emailToList.Any())
             {
                 notificationTasks.Add(mailService.SendEmailAsync(subject, body, emailToList.ToArray()));
             }
-            
-            var stringUserIds = userIds.Select(id => id.ToString()).ToList();
-            
-            notificationTasks.Add(hubContext.Clients.Users(stringUserIds).SendAsync(
-                "ReceiveTaskNotification", 
-                new { eventType = message.EventType.ToString(), message = message.Message }, 
-                cancellationToken
-            ));
-            
+
+            // 2. Отправка через SignalR (вебсокеты)
+            if (userIds.Any())
+            {
+                var stringUserIds = userIds.Select(id => id.ToString()).ToList();
+
+                notificationTasks.Add(hubContext.Clients.Users(stringUserIds).SendAsync(
+                    "ReceiveTaskNotification",
+                    new { eventType = message.EventType.ToString(), message = message.Message },
+                    cancellationToken
+                ));
+            }
+
             await Task.WhenAll(notificationTasks);
         }
 
         private static string GetSubject(TaskEventType type) => type switch
         {
             TaskEventType.Updated => "Задача изменена!",
-            TaskEventType.AddedUser => "Добавлен новый пользователь в задачу!"
+            TaskEventType.AddedUser => "Добавлен новый пользователь в задачу!",
+            _ => "Обновление в задаче проекта!"
         };
     }
 }

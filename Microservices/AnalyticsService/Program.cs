@@ -91,7 +91,9 @@ internal class Program
         // Продьюсеры для отправки запросов
         services.AddProducer<RpcMessage<ProjectIdRequest>>(configuration);
         services.AddProducer<RpcMessage<ItemIdRequest>>(configuration);
-
+        services.AddProducer<RpcMessage<GetProjectItemsRequest>>(configuration);
+        services.AddProducer<RpcMessage<GetProjectByIdRequest>>(configuration);
+        services.AddProducer<RpcMessage<ItemIdRequest>>(configuration);
         // Консьюмеры
         services.AddConsumer<RpcMessage<IEnumerable<ItemModel>>, GetItemsResponseHandler>(configuration);
         services.AddConsumer<RpcMessage<ProjectModel>, GetProjectResponseHandler>(configuration);
