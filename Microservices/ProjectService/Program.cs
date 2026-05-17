@@ -2,7 +2,6 @@ using System.Security.Claims;
 using System.Text;
 using DotNetEnv;
 using Kafka.Messaging;
-using Kafka.Messaging.Models;
 using Kafka.Messaging.Services.Abstractions;
 using Kafka.Messaging.Services.Implementations;
 using Kafka.Messaging.Settings;
@@ -17,7 +16,6 @@ using ProjectService.DataLayer;
 using ProjectService.DataLayer.Repositories.Abstractions;
 using ProjectService.DataLayer.Repositories.Implementations;
 using ProjectService.Initializers;
-using ProjectService.Kafka.Handlers;
 using ProjectService.Kafka.Implementations;
 using ProjectService.Services;
 using SharedLibrary.Auth;
@@ -25,9 +23,7 @@ using SharedLibrary.Dapper.DapperRepositories;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.MailService;
 using SharedLibrary.Middleware;
-using SharedLibrary.Models;
 using SharedLibrary.Models.KafkaModel;
-using SharedLibrary.ProjectModels;
 
 namespace ProjectService;
 internal class Program
@@ -86,19 +82,16 @@ internal class Program
     private static void ConfigureServices(IServiceCollection services, IConfigurationManager configuration)
     {
         services.Configure<MailSettings>(configuration.GetSection("MailSettings"));
+        services.Configure<KafkaSettings>(configuration.GetSection("Kafka:NotificationTask"));
         services.AddTransient<ForwardAccessTokenHandler>();
         services.AddScoped<IEmailSender, EmailSender>();
         services.AddScoped<IMailService, MailService>();
         services.AddScoped<IBoardManager, BoardManager>();
         services.AddScoped<IProjectLinkManager, ProjectLinkManager>();
-        services.AddScoped<IGitHubWebhookService, GitHubWebhookService>();
-
-        //services.AddHttpClient<IItemManager, ItemManager>
-        //    (client => client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("ANALYTICS_SERVICE") + "/analytics/"))
-        //    .AddHttpMessageHandler<ForwardAccessTokenHandler>();
-
-        services.AddScoped<IItemManager, ItemManager>();
-
+        services.AddScoped<IGitHubWebhookService, GitHubWebhookService>();    
+        services.AddHttpClient<IItemManager, ItemManager>
+            (client => client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("ANALYTICS_SERVICE") + "/analytics/"))
+            .AddHttpMessageHandler<ForwardAccessTokenHandler>();
         services.AddScoped<IValidateBoardManager, ValidateBoardManager>();
         services.AddScoped<IValidateItemManager, ValidateItemManager>();
         services.AddScoped<IValidateDocumentManager, ValidateDocumentManager>();
@@ -126,11 +119,13 @@ internal class Program
         services.AddScoped<IDocumentRepository, DocumentRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
+        services.AddSingleton<IHostedService, KafkaConsumer<TaskEventMessage>>();
         services.AddScoped<IAuth, Auth>();
         services.AddSingleton<IBlackListService, BlackListService>();
         services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+        services.AddScoped<IMessageHandler<TaskEventMessage>, TaskEventMessageHandler>();
         services.AddHttpClient<IAiManager, AiManager>();
-        
+
         services.AddCors(options =>
         {
             options.AddPolicy("AllowApiGateway", policy =>
@@ -175,22 +170,8 @@ internal class Program
             options.IncludeXmlComments(xmlPath);
         });
 
-        // Чистим старый дубль и регистрируем через твой метод расширения
         services.AddConsumer<TaskEventMessage, TaskEventMessageHandler>(configuration);
         services.AddProducer<TaskEventMessage>(configuration);
-
-        // 1. КАНАЛЫ ЗАПРОСОВ
-        services.AddConsumer<RpcMessage<GetProjectItemsRequest>, GetProjectItemsRequestHandler>(configuration);
-        services.AddConsumer<RpcMessage<GetProjectByIdRequest>, GetProjectByIdRequestHandler>(configuration);
-        services.AddConsumer<RpcMessage<GetItemByIdRequest>, GetItemByIdRequestHandler>(configuration);
-
-        // 2. КАНАЛЫ ОТВЕТОВ
-        services.AddProducer<RpcMessage<IEnumerable<ItemModel>>>(configuration);
-        services.AddProducer<RpcMessage<ProjectModel>>(configuration);
-        services.AddProducer<RpcMessage<ItemModel>>(configuration);
-
-        // 3. ФОНОВАЯ ИСТОРИЯ 
-        services.AddProducer<RpcMessage<SharedLibrary.Models.AnalyticModels.TaskHistoryModel>>(configuration);
 
         var host = Environment.GetEnvironmentVariable("HOST");
         var port = Environment.GetEnvironmentVariable("PORT");

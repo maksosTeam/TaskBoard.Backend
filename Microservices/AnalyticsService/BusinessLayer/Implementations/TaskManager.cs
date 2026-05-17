@@ -1,210 +1,176 @@
-using AnalyticsService.BusinessLayer.Abstractions;
+using AnalyticsService.BusinessLayer.Implementations;
 using AnalyticsService.DataLayer.Abstractions;
-using AnalyticsService.Kafka;
-using Kafka.Messaging.Models;
-using Kafka.Messaging.Services.Abstractions;
 using SharedLibrary.Entities.AnalyticsService;
 using SharedLibrary.Models;
 using SharedLibrary.Models.AnalyticModels;
-using SharedLibrary.Models.KafkaModel;
 
-namespace AnalyticsService.BusinessLayer.Implementations
+namespace AnalyticsService.BusinessLayer.Abstractions;
+
+public class TaskManager(HttpClient httpClient, ITaskHistoryRepository taskHistoryRepository) : ITaskManager
 {
-    public class TaskManager(
-        IKafkaProducer<RpcMessage<ProjectIdRequest>> projectItemsProducer,
-        IKafkaProducer<RpcMessage<ItemIdRequest>> singleItemProducer,
-        KafkaResponseTracker<IEnumerable<ItemModel>> itemsTracker,
-        KafkaResponseTracker<ItemModel> singleItemTracker,
-        ITaskHistoryRepository taskHistoryRepository) : ITaskManager
+    public async Task<int> CreateAsync(SharedLibrary.Models.AnalyticModels.TaskHistoryModel model)
     {
-        // Универсальный метод для отправки запроса и ожидания ответа
-        private async Task<TResponse> FetchFromKafkaAsync<TRequest, TResponse>(
-            TRequest requestPayload,
-            IKafkaProducer<RpcMessage<TRequest>> producer,
-            KafkaResponseTracker<TResponse> tracker,
-            CancellationToken cancellationToken = default)
+        var entity = new TaskHistoryEntity
         {
-            var requestMessage = new RpcMessage<TRequest> { Payload = requestPayload };
-            var responseTask = tracker.WaitAsync(requestMessage.CorrelationId, cancellationToken);
+            ChangedAt = model.ChangedAt,
+            UserId = model.UserId,
+            OldValue = model.OldValue,
+            NewValue = model.NewValue,
+            FieldName = model.FieldName,
+            ItemId = model.ItemId
+        };
+        await taskHistoryRepository.CreateAsync(entity);
+        return entity.Id;
+    }
+    
+    public async Task<IEnumerable<ItemModel>> GetCompletedTaskBetween(int projectId, DateTime startDate, DateTime endDate)
+    {
+        var items = 
+            (await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"get-items-by/{projectId}"))
+            .Where(item=>IsTaskCompleted(item) && IsTaskBetweenDates(item, startDate, endDate));
+        return items;
+    }
 
-            await producer.ProduceAsync(requestMessage, cancellationToken);
-            return await responseTask;
-        }
+    public async Task<int> GetCompletedTaskCountBetween(int projectId, DateTime startDate, DateTime endDate)
+    {
+        return (await GetCompletedTaskBetween(projectId, startDate, endDate)).Count();
+    }
+    
+    public async Task<TimeSpan?> GetAverageTimeInStatusAsync(int taskId, string statusName)
+    {
+        var item = await httpClient.GetFromJsonAsync<ItemModel>($"{taskId}");
+        var start = item.StartDate;
 
-        public async Task<int> CreateAsync(SharedLibrary.Models.AnalyticModels.TaskHistoryModel model)
+        var history = (await taskHistoryRepository.GetHistoryByTaskIdAsync(taskId))
+            .Where(h => h.FieldName == "Status")
+            .OrderBy(h => h.ChangedAt)
+            .ToList();
+
+        var totalTime = TimeSpan.Zero;
+        var count = 0;
+
+        foreach (var entry in history)
         {
-            var entity = new TaskHistoryEntity
+            if (entry.OldValue == statusName)
             {
-                ChangedAt = model.ChangedAt,
-                UserId = model.UserId,
-                OldValue = model.OldValue,
-                NewValue = model.NewValue,
-                FieldName = model.FieldName,
-                ItemId = model.ItemId
-            };
-            await taskHistoryRepository.CreateAsync(entity);
-            return entity.Id;
-        }
-
-        public async Task<IEnumerable<ItemModel>> GetCompletedTaskBetween(int projectId, DateTime startDate, DateTime endDate)
-        {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var items = await FetchFromKafkaAsync(
-                new ProjectIdRequest { ProjectId = projectId },
-                projectItemsProducer,
-                itemsTracker,
-                cts.Token);
-
-            return items.Where(item => IsTaskCompleted(item) && IsTaskBetweenDates(item, startDate, endDate));
-        }
-
-        public async Task<int> GetCompletedTaskCountBetween(int projectId, DateTime startDate, DateTime endDate)
-        {
-            return (await GetCompletedTaskBetween(projectId, startDate, endDate)).Count();
-        }
-
-        public async Task<TimeSpan?> GetAverageTimeInStatusAsync(int taskId, string statusName)
-        {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var item = await FetchFromKafkaAsync(
-                new ItemIdRequest { ItemId = taskId },
-                singleItemProducer,
-                singleItemTracker,
-                cts.Token);
-
-            var start = item.StartDate;
-
-            var history = (await taskHistoryRepository.GetHistoryByTaskIdAsync(taskId))
-                .Where(h => h.FieldName == "Status")
-                .OrderBy(h => h.ChangedAt)
-                .ToList();
-
-            var totalTime = TimeSpan.Zero;
-            var count = 0;
-
-            foreach (var entry in history)
-            {
-                if (entry.OldValue == statusName)
-                {
-                    var duration = entry.ChangedAt - start;
-                    totalTime += duration;
-                    count++;
-                }
-                start = entry.ChangedAt;
-            }
-
-            var lastStatus = history.LastOrDefault()?.NewValue ?? "Unknown";
-            if (lastStatus == statusName)
-            {
-                var endTime = item.ExpectedEndDate;
-                var duration = endTime - start;
+                var duration = entry.ChangedAt - start;
                 totalTime += duration;
                 count++;
             }
 
-            if (count == 0)
-                return null;
-
-            return totalTime / count;
+            start = entry.ChangedAt;
         }
 
-        public async Task<TimeSpan> GetTotalTimeOutsideStatusAsync(int taskId, string excludedStatus)
+        // Учитываем, если последний статус — это искомый
+        var lastStatus = history.LastOrDefault()?.NewValue ?? "Unknown";
+        if (lastStatus == statusName)
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var item = await FetchFromKafkaAsync(
-                new ItemIdRequest { ItemId = taskId },
-                singleItemProducer,
-                singleItemTracker,
-                cts.Token);
+            var endTime = item.ExpectedEndDate;
+            var duration = endTime - start;
+            totalTime += duration;
+            count++;
+        }
 
-            var history = (await taskHistoryRepository.GetHistoryByTaskIdAsync(taskId))
-                .Where(h => h.FieldName == "StatusId")
-                .OrderBy(h => h.ChangedAt)
-                .ToList();
+        if (count == 0)
+            return null; // Никогда не был в этом статусе
 
-            var total = TimeSpan.Zero;
-            var current = item.StartDate;
-            var lastStatus = "";
+        return totalTime / count;
+    }
+    
+    public async Task<TimeSpan> GetTotalTimeOutsideStatusAsync(int taskId, string excludedStatus)
+    {
+        var item = await httpClient.GetFromJsonAsync<ItemModel>($"{taskId}");
+        var history = (await taskHistoryRepository.GetHistoryByTaskIdAsync(taskId))
+            .Where(h => h.FieldName == "StatusId")
+            .OrderBy(h => h.ChangedAt)
+            .ToList();
 
-            foreach (var h in history)
-            {
-                if (lastStatus != excludedStatus)
-                    total += h.ChangedAt - current;
+        var total = TimeSpan.Zero;
+        var current = item.StartDate;
+        var lastStatus = "";
 
-                current = h.ChangedAt;
-                lastStatus = h.NewValue;
-            }
-
+        foreach (var h in history)
+        {
             if (lastStatus != excludedStatus)
-                total += item.ExpectedEndDate - current;
+                total += h.ChangedAt - current;
 
-            return total;
+            current = h.ChangedAt;
+            lastStatus = h.NewValue;
         }
 
-        public async Task<IDictionary<string, TimeSpan>> GetAverageTimeInStatusesAsync(int taskId)
+        if (lastStatus != excludedStatus)
+            total += item.ExpectedEndDate - current;
+
+        return total;
+    }
+    
+    //TODO проверить на норм значениях итема с норм стартдатой
+    public async Task<IDictionary<string, TimeSpan>> GetAverageTimeInStatusesAsync(int taskId)
+    {
+        var item = await httpClient.GetFromJsonAsync<ItemModel>($"{taskId}");
+        var start = item.StartDate;
+
+        var timeSpent = new Dictionary<string, TimeSpan>();
+        var count = new Dictionary<string, int>();
+
+        var history = (await taskHistoryRepository.GetHistoryByTaskIdAsync(taskId))
+            .Where(h => h.FieldName == "StatusId")
+            .OrderBy(h => h.ChangedAt)
+            .ToList();
+
+        // Начальный статус
+        var currentStatus = history.FirstOrDefault()?.OldValue ?? "Unknown";
+
+        foreach (var entry in history)
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var item = await FetchFromKafkaAsync(
-                new ItemIdRequest { ItemId = taskId },
-                singleItemProducer,
-                singleItemTracker,
-                cts.Token);
+            var duration = entry.ChangedAt - start;
 
-            var start = item.StartDate;
-            var timeSpent = new Dictionary<string, TimeSpan>();
-            var count = new Dictionary<string, int>();
-
-            var history = (await taskHistoryRepository.GetHistoryByTaskIdAsync(taskId))
-                .Where(h => h.FieldName == "StatusId")
-                .OrderBy(h => h.ChangedAt)
-                .ToList();
-
-            var currentStatus = history.FirstOrDefault()?.OldValue ?? "Unknown";
-
-            foreach (var entry in history)
+            if (timeSpent.TryAdd(currentStatus, duration))
             {
-                var duration = entry.ChangedAt - start;
-
-                if (timeSpent.TryAdd(currentStatus, duration))
-                    count[currentStatus] = 1;
-                else
-                {
-                    timeSpent[currentStatus] += duration;
-                    count[currentStatus]++;
-                }
-
-                currentStatus = entry.NewValue;
-                start = entry.ChangedAt;
-            }
-
-            var lastDuration = item.ExpectedEndDate - start;
-
-            if (timeSpent.TryAdd(currentStatus, lastDuration))
                 count[currentStatus] = 1;
+            }
             else
             {
-                timeSpent[currentStatus] += lastDuration;
+                timeSpent[currentStatus] += duration;
                 count[currentStatus]++;
             }
 
-            var result = new Dictionary<string, TimeSpan>();
-            foreach (var status in timeSpent.Keys)
-            {
-                var average = timeSpent[status] / count[status];
-                result.Add(status, average);
-            }
-
-            return result;
+            // Переход к следующему статусу
+            currentStatus = entry.NewValue;
+            start = entry.ChangedAt;
         }
 
-        private static bool IsTaskCompleted(ItemModel itemModel)
+        // Учитываем последний статус до ожидаемого конца
+        var lastDuration = item.ExpectedEndDate - start;
+
+        if (timeSpent.TryAdd(currentStatus, lastDuration))
         {
-            return itemModel.Status is not null && itemModel.Status.Name.Equals("Готово");
+            count[currentStatus] = 1;
+        }
+        else
+        {
+            timeSpent[currentStatus] += lastDuration;
+            count[currentStatus]++;
         }
 
-        private static bool IsTaskBetweenDates(ItemModel itemModel, DateTime startDate, DateTime endDate)
+        // Вычисляем среднее время
+        var result = new Dictionary<string, TimeSpan>();
+        foreach (var status in timeSpent.Keys)
         {
-            return itemModel.StartDate >= startDate && itemModel.ExpectedEndDate <= endDate;
+            var average = timeSpent[status] / count[status];
+            result.Add(status, average);
         }
+
+        return result;
+    }
+
+    private static bool IsTaskCompleted(ItemModel itemModel)
+    {
+        return itemModel.Status is not null && itemModel.Status.Name.Equals("Готово");
+    }
+
+    private static bool IsTaskBetweenDates(ItemModel itemModel, DateTime startDate, DateTime endDate)
+    {
+        return itemModel.StartDate >= startDate && itemModel.ExpectedEndDate <= endDate;
     }
 }

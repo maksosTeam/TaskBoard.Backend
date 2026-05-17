@@ -11,6 +11,7 @@ using SharedLibrary.Models.KafkaModel;
 using SharedLibrary.Models;
 using SharedLibrary.Entities;
 using Kafka.Messaging.Services.Abstractions;
+using ProjectService.Kafka.Implementations;
 using SharedLibrary.Models.AnalyticModels;
 
 namespace ProjectService.BusinessLayer.Implementations;
@@ -24,8 +25,9 @@ public class ItemManager(
     IAttachmentRepository attachmentRepository,
     IUserRepository userRepository,
     IKafkaProducer<TaskEventMessage> kafkaProducer,
-    IKafkaProducer<RpcMessage<TaskHistoryModel>> historyProducer, 
-    IAuth auth) : IItemManager
+    HttpClient httpClient,
+    IAuth auth,
+    TaskEventMessageHandler messageHandler) : IItemManager
 {
     private async Task<ItemModel> EnrichItemAsync(ItemEntity entity)
     {
@@ -65,21 +67,14 @@ public class ItemManager(
             }
         }
 
-        var tasks = userIds.Select(async id =>
+        // Пакетный сбор данных пользователей. 
+        // Если твой userRepository поддерживает GetUsersByIdsAsync(IEnumerable<int> ids) — лучше переписать на него!
+        var cache = new Dictionary<int, string>();
+        foreach (var id in userIds)
         {
             var user = await userRepository.GetUserAsync(id);
-            return new { Id = id, User = user };
-        });
-
-        var results = await Task.WhenAll(tasks);
-
-        var cache = new Dictionary<int, string>();
-        foreach (var res in results)
-        {
-            if (res.User != null)
-            {
-                cache[res.Id] = res.User.Username;
-            }
+            if (user != null)
+                cache[id] = user.Username;
         }
 
         return entityList.Select(x => ItemMapper.ToModel(x, cache)!).ToList();
@@ -88,6 +83,7 @@ public class ItemManager(
     public async Task<int> CreateAsync(CreateItemModel createItemModel, CancellationToken token)
     {
         await validatorManager.ValidateCreateAsync(createItemModel);
+
         var currentUserId = auth.GetCurrentUserId();
         var project = await projectRepository.GetByBoardIdAsync(createItemModel.BoardId);
 
@@ -96,15 +92,18 @@ public class ItemManager(
         entity!.CreatedAt = DateTime.UtcNow;
 
         await itemRepository.CreateAsync(entity);
+
         entity.BusinessId = $"{project.Key}-ITEM-{entity.Id}";
         entity.AuthorId = currentUserId;
 
-        await itemBoardsRepository.Create(new ItemBoardEntity
-        {
-            ItemId = entity.Id,
-            BoardId = createItemModel.BoardId,
-            StatusId = (int)entity.StatusId!
-        });
+        await itemBoardsRepository.Create(
+            new ItemBoardEntity
+            {
+                ItemId = entity.Id,
+                BoardId = createItemModel.BoardId,
+                StatusId = (int)entity.StatusId!
+            }
+        );
 
         entity = await itemRepository.GetByIdAsync(entity.Id);
 
@@ -118,10 +117,7 @@ public class ItemManager(
             ChangedAt = DateTime.UtcNow
         };
 
-        await historyProducer.ProduceAsync(new RpcMessage<TaskHistoryModel>
-        {
-            Payload = model
-        }, token);
+        await httpClient.PostAsJsonAsync("create", model, cancellationToken: token);
 
         return entity.Id;
     }
@@ -167,13 +163,14 @@ public class ItemManager(
 
         await itemRepository.UpdateAsync(entity);
 
-        await kafkaProducer.ProduceAsync(new TaskEventMessage
+        await messageHandler.HandleAsync(new TaskEventMessage
         {
             EventType = eventType,
             UserItems = item.UserItems,
             Message = message,
-        }, token);
 
+        }, token);
+        
         var model = new TaskHistoryModel
         {
             FieldName = fieldName,
@@ -184,11 +181,7 @@ public class ItemManager(
             ChangedAt = updatedAt
         };
 
-        await historyProducer.ProduceAsync(new RpcMessage<TaskHistoryModel>
-        {
-            Payload = model
-        }, token);
-
+        await httpClient.PostAsJsonAsync("create", model, cancellationToken: token);
         return entity.Id;
     }
 
@@ -307,6 +300,7 @@ public class ItemManager(
 
         await validatorManager.ValidateUserInProjectAsync(item.ProjectId);
         var commentEntity = CommentMapper.ToEntity(commentModel);
+
         commentEntity!.AuthorId = (int)userId;
 
         await commentRepository.CreateAsync(commentEntity);
@@ -314,10 +308,12 @@ public class ItemManager(
         if (attachment is not null)
         {
             var docPath = Environment.GetEnvironmentVariable("ATTACHMENT_STORAGE_PATH");
+
             if (string.IsNullOrEmpty(docPath))
                 throw new ArgumentNullException(nameof(attachment), "Переменная окружения ATTACHMENT_STORAGE_PATH не задана");
 
             Directory.CreateDirectory(docPath);
+
             var uniqueFileName = $"{Guid.NewGuid()}_{attachment.FileName}";
             var filePath = Path.Combine(docPath, uniqueFileName);
 
@@ -327,6 +323,7 @@ public class ItemManager(
             }
 
             docPath = $"/attachments/{uniqueFileName}";
+
             var attachmentEntity = new AttachmentEntity
             {
                 AuthorId = (int)userId,
@@ -334,6 +331,7 @@ public class ItemManager(
                 CommentId = commentEntity.Id,
                 FilePath = docPath,
             };
+
             await attachmentRepository.CreateAsync(attachmentEntity);
         }
 
@@ -347,7 +345,7 @@ public class ItemManager(
             ChangedAt = DateTime.UtcNow
         };
 
-        await historyProducer.ProduceAsync(new RpcMessage<TaskHistoryModel> { Payload = model }, CancellationToken.None);
+        await httpClient.PostAsJsonAsync("create", model);
 
         return commentEntity.Id;
     }
