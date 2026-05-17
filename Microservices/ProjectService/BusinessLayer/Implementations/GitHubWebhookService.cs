@@ -7,6 +7,7 @@ using SharedLibrary.Constants;
 using SharedLibrary.Models;
 using SharedLibrary.Models.AnalyticModels;
 using SharedLibrary.Models.KafkaModel;
+using Sprache;
 
 namespace ProjectService.Services;
 
@@ -15,6 +16,7 @@ public class GitHubWebhookService(
     IStatusManager statusManager,
     IItemRepository itemRepository,
     IMessageHandler<TaskEventMessage> messageHandler,
+    ICommentRepository commentRepository,
     HttpClient httpClient
 ) : IGitHubWebhookService
 {
@@ -56,17 +58,30 @@ public class GitHubWebhookService(
 
             if (!item.BoardId.HasValue) return false; // Защита от null для BoardId
 
-            status = (await statusManager.GetByBoardIdAsync(item.BoardId.Value))
-                .FirstOrDefault(x => x.Name == nameof(StatusEnum.Review));
+            var statuses = await statusManager.GetByBoardIdAsync(item.BoardId.Value);
+
+            status = statuses.FirstOrDefault(x => x.Name == "На проверке");
 
             Console.WriteLine(
                 "\n==========================================================================================");
             Console.WriteLine($"[GITHUB] Время: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
-            Console.WriteLine("[GITHUB] ПОЛУЧИЛИ СТАРЫЙ СТАТУС");
+            Console.WriteLine($";[GITHUB] ПОЛУЧИЛИ СТАРЫЙ СТАТУС {status?.Name}");
             Console.WriteLine(
                 "==========================================================================================\n");
 
-            if (status == null) return false;
+            if (status == null)
+            {
+                var id = await statusManager.CreateAsync(new StatusModel
+                {
+                    Name = "На проверке",
+                    BoardId = item.BoardId.Value,
+                    Order = 3,
+                    IsDone = false,
+                    IsRejected = false,
+                });
+                
+                status = await statusManager.GetByIdAsync(id.Value);
+            }
 
             item.StatusId = status.Id;
 
@@ -77,13 +92,27 @@ public class GitHubWebhookService(
                 "Статус", botId);
         }
 
+        var commentModel = new CommentModel
+        {
+            AuthorId = botId,
+            ItemId = item.Id,
+            Text = htmlUrl,
+            CreatedAt = DateTime.UtcNow,
+        };
+        commentModel.SetName("PR");
+        var commentEntity = CommentMapper.ToEntity(commentModel);
+        var model = new TaskHistoryModel
+        {
+            FieldName = "Комментарий",
+            OldValue = "",
+            NewValue = commentModel.Text,
+            ItemId = item.Id,
+            UserId = botId,
+            ChangedAt = DateTime.UtcNow
+        };
 
-        item.MergeLink = htmlUrl;
-
-        await Update(item, cancellationToken,
-            $"У задачи {item.Title} добавилась ссылка на ПР {htmlUrl}", string.Empty,
-            htmlUrl, "MergeLink", botId);
-
+        await httpClient.PostAsJsonAsync("create", model);
+        await commentRepository.CreateAsync(commentEntity);
         return true;
     }
 
