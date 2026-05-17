@@ -28,7 +28,7 @@ namespace SharedLibrary.Dapper.DapperRepositories
 
         public async Task<IEnumerable<UserModel>> GetUsersByIdsAsync(IEnumerable<int> ids)
         {
-            if (ids == null || !ids.Any())
+            if (!ids.Any())
             {
                 return Enumerable.Empty<UserModel>();
             }
