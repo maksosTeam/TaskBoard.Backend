@@ -18,7 +18,7 @@ namespace Kafka.Messaging.Services.Implementations
         {
             _optionsMonitor = optionsMonitor;
             _scopeFactory = scopeFactory;
-            _configName = typeof(TMessage).Name;
+            _configName = GetConfigName(typeof(TMessage));
         }
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -32,7 +32,7 @@ namespace Kafka.Messaging.Services.Implementations
 
             if (settings == null || string.IsNullOrEmpty(settings.BootstrapServers) || string.IsNullOrEmpty(settings.GroupId))
             {
-                Trace.TraceError($"[Kafka: {_configName}] Критическая ошибка: Конфигурация не найдена или не заполнена! Консьюмер не запущен.");
+                Trace.TraceError($"[Kafka: {_configName}] Критическая ошибка: Конфигурация для ключа '{_configName}' не найдена или не заполнена! Консьюмер не запущен.");
                 return;
             }
 
@@ -40,7 +40,7 @@ namespace Kafka.Messaging.Services.Implementations
             {
                 BootstrapServers = settings.BootstrapServers,
                 GroupId = settings.GroupId,
-                AutoOffsetReset = AutoOffsetReset.Earliest 
+                AutoOffsetReset = AutoOffsetReset.Earliest
             };
 
             try
@@ -67,7 +67,6 @@ namespace Kafka.Messaging.Services.Implementations
                         using var scope = _scopeFactory.CreateScope();
                         var messageHandler = scope.ServiceProvider.GetRequiredService<IMessageHandler<TMessage>>();
 
-                        // Обрабатываем сообщение
                         await messageHandler.HandleAsync(result.Message.Value, stoppingToken);
                     }
                     catch (ConsumeException ex)
@@ -86,6 +85,16 @@ namespace Kafka.Messaging.Services.Implementations
             {
                 Trace.TraceError($"[Kafka: {_configName}] Не удалось инициализировать или запустить консьюмер: {ex.Message}");
             }
+        }
+
+        private static string GetConfigName(Type type)
+        {
+            if (!type.IsGenericType)
+                return type.Name;
+
+            var baseName = type.Name.Split('`')[0];
+            var genericArgs = string.Join("_", type.GetGenericArguments().Select(t => t.Name.Replace("`", "")));
+            return $"{baseName}_{genericArgs}";
         }
     }
 }

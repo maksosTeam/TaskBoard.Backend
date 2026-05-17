@@ -12,7 +12,7 @@ namespace Kafka.Messaging.Services.Implementations
 
         public KafkaProducer(IOptionsMonitor<KafkaSettings> optionsMonitor)
         {
-            var configName = typeof(TMessage).Name;
+            var configName = Extensions.GetConfigName(typeof(TMessage));
             var settings = optionsMonitor.Get(configName);
 
             var config = new ProducerConfig
@@ -39,6 +39,18 @@ namespace Kafka.Messaging.Services.Implementations
         {
             producer?.Dispose();
             GC.SuppressFinalize(this);
+        }
+
+        public static string GetConfigName(Type type)
+        {
+            if (!type.IsGenericType)
+                return type.Name;
+
+            var baseName = type.Name.Split('`')[0]; 
+            
+            var genericArgs = string.Join("_", type.GetGenericArguments().Select(t => t.Name.Replace("`", "")));
+            
+            return $"{baseName}_{genericArgs}"; 
         }
     }
 }
