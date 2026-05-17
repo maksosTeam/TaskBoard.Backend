@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 
 WORKDIR /src
 
@@ -9,14 +9,14 @@ COPY Shared/ Shared/
 WORKDIR /src/Microservices/UserService
 
 RUN dotnet restore "UserService.csproj"
-RUN dotnet build "UserService.csproj" -c Release -o /app/build
+RUN dotnet build "UserService.csproj" -c Development -o /app/build
 FROM build AS publish
 
 WORKDIR /src/Microservices/UserService
 
-RUN dotnet publish "UserService.csproj" -c Release -o /app/publish
+RUN dotnet publish "UserService.csproj" -c Development -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 
 WORKDIR /app
 
