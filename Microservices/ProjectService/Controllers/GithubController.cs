@@ -14,15 +14,16 @@ public class GithubController : ControllerBase
     private readonly IGitHubWebhookService _webhookService;
     private readonly string _webhookSecret;
 
-    public GithubController(IGitHubWebhookService webhookService, IConfiguration configuration)
+    public GithubController(IGitHubWebhookService webhookService)
     {
         _webhookService = webhookService;
-        _webhookSecret = configuration["GitHub:WebhookSecret"]
-                         ?? throw new InvalidOperationException("GitHub Webhook Secret is not configured.");
+        _webhookSecret =
+            "MD83iQNEbPbjbiSxGMpQ9h4JkHLn8z9JsAkG4XPtkweBTNpryF2hrG7sTkv3pZ3U4UhfcUhRgqpPBZanyjUD9RQMOY24QafH58tQI7MQk77aN7LqmIarHt6rPxBTfLPz";
     }
 
     [HttpPost("webhook")]
     public async Task<IActionResult> HandleWebhook(
+        [FromQuery(Name = "id")] string botId,
         [FromHeader(Name = "X-GitHub-Event")] string gitHubEvent,
         [FromHeader(Name = "X-Hub-Signature-256")]
         string signature)
@@ -68,7 +69,8 @@ public class GithubController : ControllerBase
         var isProcessed = await _webhookService.ProcessPullRequestAsync(
             payload.Action,
             payload.PullRequest.Title,
-            payload.PullRequest.HtmlUrl
+            payload.PullRequest.HtmlUrl,
+            int.Parse(botId)
         );
 
         return Ok(isProcessed

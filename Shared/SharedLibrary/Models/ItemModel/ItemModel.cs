@@ -67,4 +67,13 @@ public class ItemModel
     [JsonIgnore]
     public ICollection<SprintModel>? Sprints { get; set; } = null;
 
+    public override string ToString()
+    {
+        return $"Id: {Id}, ParentId: {ParentId}, ProjectId: {ProjectId}, BoardId: {BoardId}, " +
+               $"ProjectItemNumber: {ProjectItemNumber}, BusinessId: '{BusinessId}', Title: '{Title}', " +
+               $"Description: '{Description}', CreatedAt: {CreatedAt}, UpdatedAt: {UpdatedAt}, " +
+               $"StartDate: {StartDate}, ExpectedEndDate: {ExpectedEndDate}, Priority: {Priority} ({PriorityText}), " +
+               $"ItemTypeId: {ItemTypeId}, StatusId: {StatusId}, IsArchived: {IsArchived}, " +
+               $"MergeLink: '{MergeLink}', Author: '{Author}'";
+    }
 }

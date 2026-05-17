@@ -24,10 +24,9 @@ public class ItemManager(
     ICommentRepository commentRepository,
     IAttachmentRepository attachmentRepository,
     IUserRepository userRepository,
-    IKafkaProducer<TaskEventMessage> kafkaProducer,
     HttpClient httpClient,
     IAuth auth,
-    TaskEventMessageHandler messageHandler) : IItemManager
+    IMessageHandler<TaskEventMessage> messageHandler) : IItemManager
 {
     private async Task<ItemModel> EnrichItemAsync(ItemEntity entity)
     {
@@ -151,10 +150,14 @@ public class ItemManager(
         return models.ToList();
     }
 
-    public async Task<int> UpdateAsync(ItemModel item, CancellationToken token, string message, string oldValue, string newValue, string fieldName,
+    public async Task<int> UpdateAsync(ItemModel item, CancellationToken token, string message, string oldValue, string newValue, string fieldName, int botId = -1,
         TaskEventType eventType = TaskEventType.Updated)
     {
-        await validatorManager.ValidateItemModelAsync(item);
+        Console.WriteLine("\n==========================================================================================");
+        Console.WriteLine($"[GITHUB] Время: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+        Console.WriteLine($"[GITHUB] МЕНЯЕМ ЗАДАЧУ");
+        Console.WriteLine("==========================================================================================\n");
+        await validatorManager.ValidateItemModelAsync(item, botId);
         var entity = ItemMapper.ItemToEntity(item);
         entity!.Id = item.Id;
 
@@ -168,7 +171,6 @@ public class ItemManager(
             EventType = eventType,
             UserItems = item.UserItems,
             Message = message,
-
         }, token);
         
         var model = new TaskHistoryModel
@@ -177,7 +179,7 @@ public class ItemManager(
             OldValue = oldValue,
             NewValue = newValue,
             ItemId = item.Id,
-            UserId = (int)auth.GetCurrentUserId()!,
+            UserId = botId != -1 ? botId : (int)auth.GetCurrentUserId()!,
             ChangedAt = updatedAt
         };
 
@@ -216,6 +218,7 @@ public class ItemManager(
             oldUsersString,
             newUsersString,
             "UserItems",
+            -1,
             TaskEventType.AddedUser
         );
 

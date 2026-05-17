@@ -32,15 +32,14 @@ internal class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        if (builder.Environment.IsDevelopment())
-            Env.Load();
+        Env.Load();
 
         builder.Configuration.AddEnvironmentVariables();
 
         ConfigureServices(builder.Services, builder.Configuration);
 
         var app = builder.Build();
-
+        app.MapHub<NotificationHub>("/notificationHub");
         using var scope = app.Services.CreateScope();
         using var appDbContext = scope.ServiceProvider.GetRequiredService<ProjectDbContext>();
         await DbContextInitializer.Migrate(appDbContext);
@@ -88,7 +87,9 @@ internal class Program
         services.AddScoped<IMailService, MailService>();
         services.AddScoped<IBoardManager, BoardManager>();
         services.AddScoped<IProjectLinkManager, ProjectLinkManager>();
-        services.AddScoped<IGitHubWebhookService, GitHubWebhookService>();    
+        services.AddHttpClient<IGitHubWebhookService, GitHubWebhookService>
+                (client => client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("ANALYTICS_SERVICE") + "/analytics/"))
+            .AddHttpMessageHandler<ForwardAccessTokenHandler>();     
         services.AddHttpClient<IItemManager, ItemManager>
             (client => client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("ANALYTICS_SERVICE") + "/analytics/"))
             .AddHttpMessageHandler<ForwardAccessTokenHandler>();
@@ -124,7 +125,17 @@ internal class Program
         services.AddSingleton<IBlackListService, BlackListService>();
         services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
         services.AddScoped<IMessageHandler<TaskEventMessage>, TaskEventMessageHandler>();
-        services.AddHttpClient<IAiManager, AiManager>();
+        services.Configure<AiSettings>(options =>
+        {
+            options.ApiKey = configuration["API_KEY"] ?? Environment.GetEnvironmentVariable("API_KEY");
+        });
+
+        services.AddHttpClient<IAiManager, AiManager>();                
+        services.AddSignalR(options =>
+        {
+            options.EnableDetailedErrors = true;
+            options.MaximumReceiveMessageSize = 102400;
+        });
 
         services.AddCors(options =>
         {

@@ -23,9 +23,13 @@ public class ValidateItemManager(IBoardManager boardManager,
             throw new ArgumentException(string.Join(", ", result.Errors.Select(e => e.ErrorMessage)));
     }
     
-    public async Task ValidateItemModelAsync(ItemModel itemModel)
+    public async Task ValidateItemModelAsync(ItemModel itemModel, int botId = -1)
     {
         var userId = authManager.GetCurrentUserId();
+        if (botId != -1)
+        {
+            userId = botId;
+        }
         var validator = new ItemModelValidator(statusManager, itemTypeManager, userProjectManager, itemRepository, userId);
         var result = await validator.ValidateAsync(itemModel);
         if (!result.IsValid)
