@@ -18,6 +18,8 @@ services:
         condition: service_healthy
     networks:
       - taskboard-network
+    volumes:
+      - avatar-storage:/avatars
 
   user-db:
     container_name: swaga-user-db
@@ -36,4 +38,6 @@ services:
 
 volumes:
   user-data:
+    external: false
+  avatar-storage:
     external: false
