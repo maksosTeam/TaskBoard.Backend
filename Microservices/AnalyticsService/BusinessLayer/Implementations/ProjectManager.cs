@@ -15,7 +15,9 @@ using SharedLibrary.ProjectModels;
 namespace AnalyticsService.BusinessLayer.Implementations
 {
     public class ProjectManager(
-        IKafkaProducer<RpcMessage<ProjectIdRequest>> rpcProducer,
+        IKafkaProducer<RpcMessage<ProjectIdRequest>> generalProducer, // Для старых методов
+        IKafkaProducer<RpcMessage<GetProjectItemsRequest>> itemsProducer, // Для списка задач в Burndown
+        IKafkaProducer<RpcMessage<GetProjectByIdRequest>> projectProducer, // Для инфо о проекте в Burndown
         KafkaResponseTracker<IEnumerable<ItemModel>> itemsTracker,
         KafkaResponseTracker<ProjectModel> projectTracker,
         ITaskHistoryRepository taskHistoryRepository,
@@ -25,13 +27,16 @@ namespace AnalyticsService.BusinessLayer.Implementations
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-            var itemsTask = FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = request.ProjectId }, itemsTracker, cts.Token);
-            var projectTask = FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = request.ProjectId }, projectTracker, cts.Token);
+            // Передаем правильные продьюсеры и контракты запросов
+            var itemsTask = FetchFromKafkaAsync(itemsProducer, new GetProjectItemsRequest { ProjectId = request.ProjectId }, itemsTracker, cts.Token);
+            var projectTask = FetchFromKafkaAsync(projectProducer, new GetProjectByIdRequest { ProjectId = request.ProjectId }, projectTracker, cts.Token);
 
+            // Ждем выполнения обоих запросов параллельно
             await Task.WhenAll(itemsTask, projectTask);
 
-            var items = itemsTask.Result;
-            var project = projectTask.Result;
+            // Безопасно получаем результаты без .Result
+            var items = await itemsTask;
+            var project = await projectTask;
 
             if (items is null || project is null)
                 throw new InvalidOperationException("Project service вернул пустой ответ или запрос завершился по таймауту.");
@@ -67,90 +72,73 @@ namespace AnalyticsService.BusinessLayer.Implementations
         public async Task<ICollection<ChartDataPoint>> GetCustomChart(ChartQueryModel query)
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = query.ProjectId }, itemsTracker, cts.Token);
+            var items = await FetchFromKafkaAsync(generalProducer, new ProjectIdRequest { ProjectId = query.ProjectId }, itemsTracker, cts.Token);
 
             items = items.Where(i => i.StartDate >= query.Start && i.StartDate <= query.End).ToList();
-
             var yAxis = query.YAxis?.ToLower() ?? "count";
-
             List<ChartDataPoint> data;
 
             switch (query.XAxis.ToLower())
             {
                 case "status":
-                    data = items
-                        .Where(i => i.Status != null)
-                        .GroupBy(i => i.Status!.Name)
-                        .Select(g => new ChartDataPoint
-                        {
-                            X = g.Key,
-                            Y = CalculateYAxis(g, yAxis)
-                        })
-                        .ToList();
-                    break;
+                data = items
+                    .Where(i => i.Status != null)
+                    .GroupBy(i => i.Status!.Name)
+                    .Select(g => new ChartDataPoint
+                    {
+                        X = g.Key,
+                        Y = CalculateYAxis(g, yAxis)
+                    })
+                    .ToList();
+                break;
 
                 case "user":
-                    var allContributors = items
-                        .SelectMany(i => i.Contributors)
-                        .Distinct()
-                        .ToList();
+                var allContributors = items
+                    .SelectMany(i => i.Contributors)
+                    .Distinct()
+                    .ToList();
 
-                    if (items.Any(i => i.Contributors.Count == 0))
+                if (items.Any(i => i.Contributors.Count == 0))
+                {
+                    allContributors.Add("Без исполнителя");
+                }
+
+                data = allContributors
+                    .Select(contributor => new ChartDataPoint
                     {
-                        allContributors.Add("Без исполнителя");
-                    }
-
-                    data = allContributors
-                        .Select(contributor => new ChartDataPoint
-                        {
-                            X = contributor,
-                            Y = CalculateYAxis(
-                                items.Where(i =>
-                                    (contributor == "Без исполнителя" && i.Contributors.Count == 0) ||
-                                    (contributor != "Без исполнителя" && i.Contributors.Contains(contributor))
-                                ),
-                                yAxis)
-                        })
-                        .ToList();
-                    break;
+                        X = contributor,
+                        Y = CalculateYAxis(
+                            items.Where(i =>
+                                (contributor == "Без исполнителя" && i.Contributors.Count == 0) ||
+                                (contributor != "Без исполнителя" && i.Contributors.Contains(contributor))
+                            ),
+                            yAxis)
+                    })
+                    .ToList();
+                break;
 
                 case "date":
-                    data = items
-                        .GroupBy(i => i.StartDate.Date)
-                        .Select(g => new ChartDataPoint
-                        {
-                            X = g.Key.ToString("yyyy-MM-dd"),
-                            Y = CalculateYAxis(g, yAxis)
-                        })
-                        .ToList();
-                    break;
+                data = items
+                    .GroupBy(i => i.StartDate.Date)
+                    .Select(g => new ChartDataPoint
+                    {
+                        X = g.Key.ToString("yyyy-MM-dd"),
+                        Y = CalculateYAxis(g, yAxis)
+                    })
+                    .ToList();
+                break;
 
                 default:
-                    throw new ArgumentException($"Unsupported XAxis: {query.XAxis}");
+                throw new ArgumentException($"Unsupported XAxis: {query.XAxis}");
             }
 
             return data;
         }
 
-        private static double CalculateYAxis(IEnumerable<ItemModel> group, string yAxis)
-        {
-            return yAxis switch
-            {
-                "count" => group.Count(),
-                "sum-priority" => group.Sum(i => i.Priority),
-                "avg-duration" => group
-                    .Select(i => (i.ExpectedEndDate - i.StartDate).TotalDays)
-                    .DefaultIfEmpty(0)
-                    .Average(),
-                _ => throw new ArgumentException($"Unsupported YAxis: {yAxis}")
-            };
-        }
-
-
         public async Task<ICollection<TaskHistoryModel>> GetProjectHistory(int projectId)
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = projectId }, itemsTracker, cts.Token);
+            var items = await FetchFromKafkaAsync(generalProducer, new ProjectIdRequest { ProjectId = projectId }, itemsTracker, cts.Token);
 
             var itemIds = items.Select(x => x.Id).ToHashSet();
             var itemHistory = await taskHistoryRepository.GetHistoryByManyTaskIds(itemIds);
@@ -164,7 +152,7 @@ namespace AnalyticsService.BusinessLayer.Implementations
         public async Task<ICollection<GanttTaskModel>> GetGanttChartDataAsync(int projectId)
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = projectId }, itemsTracker, cts.Token);
+            var items = await FetchFromKafkaAsync(generalProducer, new ProjectIdRequest { ProjectId = projectId }, itemsTracker, cts.Token);
 
             var ganttTasks = items
                 .Where(i => i.StartDate != default && i.ExpectedEndDate != default)
@@ -186,7 +174,7 @@ namespace AnalyticsService.BusinessLayer.Implementations
         public async Task<ICollection<RoadmapItemModel>> GetRoadmapDataAsync(int projectId)
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = projectId }, itemsTracker, cts.Token);
+            var items = await FetchFromKafkaAsync(generalProducer, new ProjectIdRequest { ProjectId = projectId }, itemsTracker, cts.Token);
 
             var roadmapItems = items
                 .Where(i => i.StartDate != default && i.ExpectedEndDate != default)
@@ -204,29 +192,10 @@ namespace AnalyticsService.BusinessLayer.Implementations
             return roadmapItems;
         }
 
-        /// <summary>
-        /// Получение данных для построения тепловой карты (heatmap)
-        /// </summary>
-        /// <remarks>
-        /// <b>Описание метрик:</b>
-        /// <ul>
-        ///     <li><b>inflow</b> – количество задач, созданных в указанный день (по дате начала)</li>
-        ///     <li><b>outflow</b> – количество завершённых задач в указанный день (по дате обновления и статусу "Завершено")</li>
-        ///     <li><b>avg-duration</b> – средняя длительность задач (в днях) от начала до ожидаемого завершения в конкретный день</li>
-        /// </ul>
-        /// <b>Оси:</b>
-        /// <ul>
-        ///     <li><b>X</b> – дата (в формате YYYY-MM-DD)</li>
-        ///     <li><b>Y</b> – исполнитель задачи (если не назначен – "Без исполнителя")</li>
-        ///     <li><b>Value</b> – значение метрики (количество задач или средняя длительность)</li>
-        /// </ul>
-        /// </remarks>
-        /// <param name="query">Параметры фильтрации: идентификатор проекта, диапазон дат, тип метрики</param>
-        /// <returns>Список ячеек тепловой карты с координатами и значением</returns>
         public async Task<List<HeatmapCell>> GetHeatmapData(HeatmapQueryModel query)
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = query.ProjectId }, itemsTracker, cts.Token);
+            var items = await FetchFromKafkaAsync(generalProducer, new ProjectIdRequest { ProjectId = query.ProjectId }, itemsTracker, cts.Token);
 
             var filteredItems = items
                 .Where(i => i.StartDate.Date >= query.Start.Date && i.StartDate.Date <= query.End.Date)
@@ -277,27 +246,38 @@ namespace AnalyticsService.BusinessLayer.Implementations
             };
         }
 
-
-        private async Task<TResponse> FetchFromKafkaAsync<TResponse>(
-        ProjectIdRequest req,
-        KafkaResponseTracker<TResponse> tracker,
-        CancellationToken cancellationToken = default)
+        private static double CalculateYAxis(IEnumerable<ItemModel> group, string yAxis)
         {
-            // Создаем сообщение, где Payload — это объект ProjectIdRequest
-            var requestMessage = new RpcMessage<ProjectIdRequest>
+            return yAxis switch
+            {
+                "count" => group.Count(),
+                "sum-priority" => group.Sum(i => i.Priority),
+                "avg-duration" => group
+                    .Select(i => (i.ExpectedEndDate - i.StartDate).TotalDays)
+                    .DefaultIfEmpty(0)
+                    .Average(),
+                _ => throw new ArgumentException($"Unsupported YAxis: {yAxis}")
+            };
+        }
+
+        // Универсальный метод отправки RPC-запросов в Kafka
+        private async Task<TResponse> FetchFromKafkaAsync<TRequest, TResponse>(
+            IKafkaProducer<RpcMessage<TRequest>> producer,
+            TRequest req,
+            KafkaResponseTracker<TResponse> tracker,
+            CancellationToken cancellationToken = default)
+        {
+            var requestMessage = new RpcMessage<TRequest>
             {
                 Payload = req
             };
 
-            // 1. Начинаем слушать ответ ДО отправки
             var responseTask = tracker.WaitAsync(requestMessage.CorrelationId, cancellationToken);
 
-            // 2. Отправляем типизированный запрос в Кафку
-            await rpcProducer.ProduceAsync(requestMessage, cancellationToken);
+            // Используем переданный конкретный продьюсер
+            await producer.ProduceAsync(requestMessage, cancellationToken);
 
-            // 3. Ждем ответа
             return await responseTask;
         }
-
     }
 }
