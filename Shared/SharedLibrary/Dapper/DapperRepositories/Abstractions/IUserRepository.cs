@@ -6,5 +6,5 @@ public interface IUserRepository
 {
     Task<UserModel?> GetUserAsync(int id);
     Task<UserModel?> GetUserByEmailAsync(string email);
-    Task<IEnumerable<UserModel>?> GetUsersByIdsAsync(IEnumerable<int> ids);
+    Task<IEnumerable<UserModel>> GetUsersByIdsAsync(IEnumerable<int> ids);
 }

@@ -9,7 +9,7 @@ namespace SharedLibrary.Dapper.DapperRepositories
 
         public UserRepository(string conn)
         {
-           Connection = conn;
+            Connection = conn;
         }
 
         public async Task<UserModel?> GetUserAsync(int id)
@@ -28,16 +28,16 @@ namespace SharedLibrary.Dapper.DapperRepositories
 
         public async Task<IEnumerable<UserModel>> GetUsersByIdsAsync(IEnumerable<int> ids)
         {
-            if (ids == null || !ids.Any())
+            if (!ids.Any())
             {
                 return Enumerable.Empty<UserModel>();
             }
 
-            var query = "SELECT * FROM \"Users\" WHERE \"Id\" IN @Ids";
+            var query = "SELECT * FROM \"Users\" WHERE \"Id\" = ANY(@Ids)";
 
             var result = await DapperOperations
-                .QueryAsync<UserModel>(query, new { Ids = ids }, Connection);
-    
+                .QueryAsync<UserModel>(query, new { Ids = ids.ToArray() }, Connection);
+
             return result;
         }
     }
