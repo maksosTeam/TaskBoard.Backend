@@ -47,7 +47,6 @@ internal class Program
         app.MapControllers();
 
         app.Run();
-        # check ci cd
     }
 
     public static void ConfigureServices(IServiceCollection services, IConfigurationManager configuration)
