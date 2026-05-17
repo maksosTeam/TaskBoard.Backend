@@ -83,6 +83,8 @@ internal class Program
         //    .AddHttpClient<IProjectManager, ProjectManager>(client =>client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("PROJECT_SERVICE")!))
         //    .AddHttpMessageHandler<ForwardAccessTokenHandler>();
 
+        services.AddScoped<IProjectManager, ProjectManager>();
+
         // Трекер для одиночных задач
         services.AddSingleton<KafkaResponseTracker<ItemModel>>();
         services.AddSingleton(typeof(KafkaResponseTracker<>));
