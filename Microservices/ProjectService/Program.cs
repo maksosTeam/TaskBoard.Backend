@@ -129,8 +129,8 @@ internal class Program
         services.AddScoped<IAuth, Auth>();
         services.AddSingleton<IBlackListService, BlackListService>();
         services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
-        services.AddScoped<IAiManager, AiManager>();
-
+        services.AddHttpClient<IAiManager, AiManager>();
+        
         services.AddCors(options =>
         {
             options.AddPolicy("AllowApiGateway", policy =>
