@@ -178,7 +178,7 @@ internal class Program
 
         // Чистим старый дубль и регистрируем через твой метод расширения
         services.AddConsumer<TaskEventMessage, TaskEventMessageHandler>(configuration);
-        services.AddProducer<TaskEventMessage>(configuration);
+        services.AddProducer<TaskEventMessage>(configuration.GetSection("Kafka:NotificationTask"));
 
         // 1. КАНАЛЫ ЗАПРОСОВ
         services.AddConsumer<RpcMessage<GetProjectItemsRequest>, GetProjectItemsRequestHandler>(configuration);
