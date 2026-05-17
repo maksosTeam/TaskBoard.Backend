@@ -80,13 +80,13 @@ public class ProjectController : ControllerBase
             var user = await userRepository.GetUserByEmailAsync(request.Email);
 
             if (user is null || project is null)
-                return BadRequest("������������ ��� ������� �� ����������");
+                return BadRequest("Пользователь или проект не найден");
 
             await _emailSender.SendEmailAsync(
                 user.Email,
-                "����������� � ������",
-                $"������������, {user.Username}, ��� ���������� � ������ {project.Name}.\n" +
-                $"������-�����������: {link}");
+                $"Здравствуйте {user.Username}! Вас пригласили в проект - {project.Name}. " +
+                $"Чтобы принять приглашение перейдите по ссылке - {link}",
+                user.Email);
 
             return Ok(link);
         }
