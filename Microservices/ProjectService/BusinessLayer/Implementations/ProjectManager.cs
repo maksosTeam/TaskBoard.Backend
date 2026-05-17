@@ -243,9 +243,9 @@ public class ProjectManager(
             throw new NotAuthorizedException();
 
         var users = (await userRepository
-            .GetUsersByIdsAsync(project.UserProjects.Select(x => x.UserId)))
+            .GetUsersByIdsAsync(project.UserProjects.Select(x => x.UserId)
+                .ToArray()))
             .ToList();
-            
 
         var result = new List<GetUsersInProjectResponse>();
         var userInProjects = project.UserProjects.ToList();
