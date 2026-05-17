@@ -85,7 +85,7 @@ internal class Program
 
         // Трекер для одиночных задач
         services.AddSingleton<KafkaResponseTracker<ItemModel>>();
-
+        services.AddSingleton(typeof(KafkaResponseTracker<>));
         // Продьюсеры для отправки запросов
         services.AddProducer<RpcMessage<ProjectIdRequest>>(configuration);
         services.AddProducer<RpcMessage<ItemIdRequest>>(configuration);
