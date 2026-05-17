@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 
 WORKDIR /src
 
@@ -9,12 +9,12 @@ COPY Shared/ Shared/
 WORKDIR /src/TaskBoardAPI
 
 RUN dotnet restore "TaskBoardAPI.csproj"
-RUN dotnet build "TaskBoardAPI.csproj" -c Development -o /app/build
+RUN dotnet build "TaskBoardAPI.csproj" -c Release -o /app/build
 FROM build AS publish
 
-RUN dotnet publish "TaskBoardAPI.csproj" -c Development -o /app/publish
+RUN dotnet publish "TaskBoardAPI.csproj" -c Release -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 
 WORKDIR /app
 
