@@ -5,7 +5,7 @@ using SharedLibrary.Models;
 
 namespace ProjectService.Services;
 
-public class GitHubWebhookService(IItemManager itemManager, IStatusManager statusManager, IBoardManager boardManager) : IGitHubWebhookService
+public class GitHubWebhookService(IItemManager itemManager, IStatusManager statusManager) : IGitHubWebhookService
 {
     private static readonly Regex TaskKeyRegex = new(@"[a-zA-Z]+-\d+", RegexOptions.Compiled);
 
