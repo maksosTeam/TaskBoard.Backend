@@ -86,7 +86,6 @@ internal class Program
     private static void ConfigureServices(IServiceCollection services, IConfigurationManager configuration)
     {
         services.Configure<MailSettings>(configuration.GetSection("MailSettings"));
-        services.Configure<KafkaSettings>(configuration.GetSection("Kafka:NotificationTask"));
         services.AddTransient<ForwardAccessTokenHandler>();
         services.AddScoped<IEmailSender, EmailSender>();
         services.AddScoped<IMailService, MailService>();
