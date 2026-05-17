@@ -6,7 +6,7 @@ namespace ProjectService.BusinessLayer.Implementations;
 
 public class AiManager(HttpClient httpClient, IConfiguration configuration) : IAiManager
 {
-    private readonly string? _apiKey = Environment.GetEnvironmentVariable("apiKey");
+    private readonly string? _apiKey = configuration["apiKey"];
     private const string Url = "https://openrouter.ai/api/v1/chat/completions";
     private const string Model = "google/gemini-2.0-flash-001";
 
@@ -48,6 +48,7 @@ public class AiManager(HttpClient httpClient, IConfiguration configuration) : IA
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, Url);
+        Console.WriteLine(_apiKey);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
         request.Headers.Add("HTTP-Referer", "https://project-domain.ru/"); 
         request.Content = JsonContent.Create(requestBody);
