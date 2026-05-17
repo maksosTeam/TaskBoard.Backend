@@ -3,6 +3,7 @@ using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.Entities.AnalyticsService;
 using SharedLibrary.Entities.UserService;
 using SharedLibrary.Models;
+using SharedLibrary.Models.AnalyticModels;
 
 namespace AnalyticsService.Mapper
 {

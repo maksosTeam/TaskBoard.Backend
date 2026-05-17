@@ -1,27 +1,40 @@
 ﻿using AnalyticsService.BusinessLayer.Abstractions;
 using AnalyticsService.DataLayer.Abstractions;
+using AnalyticsService.Kafka;
 using AnalyticsService.Mapper;
 using AnalyticsService.Models;
-using Microsoft.AspNetCore.Http;
+using Kafka.Messaging.Models;
+using Kafka.Messaging.Services.Abstractions;
 using Microsoft.EntityFrameworkCore;
-using Org.BouncyCastle.Asn1.Ocsp;
 using SharedLibrary.Constants;
 using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.Models;
+using SharedLibrary.Models.AnalyticModels;
 using SharedLibrary.ProjectModels;
-using System.Net.Http.Headers;
 
 namespace AnalyticsService.BusinessLayer.Implementations
 {
-    public class ProjectManager(HttpClient httpClient, ITaskHistoryRepository taskHistoryRepository, IUserRepository userRepository) : IProjectManager
+    public class ProjectManager(
+        IKafkaProducer<RpcMessage<ProjectIdRequest>> rpcProducer,
+        KafkaResponseTracker<IEnumerable<ItemModel>> itemsTracker,
+        KafkaResponseTracker<ProjectModel> projectTracker,
+        ITaskHistoryRepository taskHistoryRepository,
+        IUserRepository userRepository) : IProjectManager
     {
         public async Task<BurndownChartModel> GetBurndown(BurnDownChartRequest request)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"item/get-items-by/{request.ProjectId}");
-            var project = await httpClient.GetFromJsonAsync<ProjectModel>($"project/get/{request.ProjectId}");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+            var itemsTask = FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = request.ProjectId }, itemsTracker, cts.Token);
+            var projectTask = FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = request.ProjectId }, projectTracker, cts.Token);
+
+            await Task.WhenAll(itemsTask, projectTask);
+
+            var items = itemsTask.Result;
+            var project = projectTask.Result;
 
             if (items is null || project is null)
-                throw new InvalidOperationException("Project service вернул пустой ответ.");
+                throw new InvalidOperationException("Project service вернул пустой ответ или запрос завершился по таймауту.");
 
             var sprintStart = project.StartDate.Date;
             var sprintEnd = project.ExpectedEndDate.Date;
@@ -53,12 +66,10 @@ namespace AnalyticsService.BusinessLayer.Implementations
 
         public async Task<ICollection<ChartDataPoint>> GetCustomChart(ChartQueryModel query)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>(
-                $"item/get-items-by/{query.ProjectId}");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = query.ProjectId }, itemsTracker, cts.Token);
 
-            items = items
-                .Where(i => i.StartDate >= query.Start && i.StartDate <= query.End)
-                .ToList();
+            items = items.Where(i => i.StartDate >= query.Start && i.StartDate <= query.End).ToList();
 
             var yAxis = query.YAxis?.ToLower() ?? "count";
 
@@ -138,10 +149,10 @@ namespace AnalyticsService.BusinessLayer.Implementations
 
         public async Task<ICollection<TaskHistoryModel>> GetProjectHistory(int projectId)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"item/get-items-by/{projectId}");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = projectId }, itemsTracker, cts.Token);
 
             var itemIds = items.Select(x => x.Id).ToHashSet();
-
             var itemHistory = await taskHistoryRepository.GetHistoryByManyTaskIds(itemIds);
 
             var historyModels = await Task.WhenAll(
@@ -152,7 +163,8 @@ namespace AnalyticsService.BusinessLayer.Implementations
 
         public async Task<ICollection<GanttTaskModel>> GetGanttChartDataAsync(int projectId)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"item/get-items-by/{projectId}");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = projectId }, itemsTracker, cts.Token);
 
             var ganttTasks = items
                 .Where(i => i.StartDate != default && i.ExpectedEndDate != default)
@@ -173,7 +185,8 @@ namespace AnalyticsService.BusinessLayer.Implementations
 
         public async Task<ICollection<RoadmapItemModel>> GetRoadmapDataAsync(int projectId)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>($"item/get-items-by/{projectId}");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = projectId }, itemsTracker, cts.Token);
 
             var roadmapItems = items
                 .Where(i => i.StartDate != default && i.ExpectedEndDate != default)
@@ -212,8 +225,8 @@ namespace AnalyticsService.BusinessLayer.Implementations
         /// <returns>Список ячеек тепловой карты с координатами и значением</returns>
         public async Task<List<HeatmapCell>> GetHeatmapData(HeatmapQueryModel query)
         {
-            var items = await httpClient.GetFromJsonAsync<IEnumerable<ItemModel>>(
-                $"item/get-items-by/{query.ProjectId}");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var items = await FetchFromKafkaAsync(new ProjectIdRequest { ProjectId = query.ProjectId }, itemsTracker, cts.Token);
 
             var filteredItems = items
                 .Where(i => i.StartDate.Date >= query.Start.Date && i.StartDate.Date <= query.End.Date)
@@ -233,7 +246,7 @@ namespace AnalyticsService.BusinessLayer.Implementations
                     }).ToList(),
 
                 "outflow" => filteredItems
-                    .Where(i => i.Status?.Name == "Завершено") // При необходимости заменить на актуальный статус
+                    .Where(i => i.Status?.Name == "Завершено")
                     .SelectMany(i => i.Contributors.DefaultIfEmpty("Без исполнителя"),
                                 (item, contributor) => new { contributor, date = item.UpdatedAt.Date })
                     .GroupBy(g => new { g.date, g.contributor })
@@ -262,6 +275,28 @@ namespace AnalyticsService.BusinessLayer.Implementations
 
                 _ => throw new ArgumentException("Unknown metric: " + query.Metric)
             };
+        }
+
+
+        private async Task<TResponse> FetchFromKafkaAsync<TResponse>(
+        ProjectIdRequest req,
+        KafkaResponseTracker<TResponse> tracker,
+        CancellationToken cancellationToken = default)
+        {
+            // Создаем сообщение, где Payload — это объект ProjectIdRequest
+            var requestMessage = new RpcMessage<ProjectIdRequest>
+            {
+                Payload = req
+            };
+
+            // 1. Начинаем слушать ответ ДО отправки
+            var responseTask = tracker.WaitAsync(requestMessage.CorrelationId, cancellationToken);
+
+            // 2. Отправляем типизированный запрос в Кафку
+            await rpcProducer.ProduceAsync(requestMessage, cancellationToken);
+
+            // 3. Ждем ответа
+            return await responseTask;
         }
 
     }

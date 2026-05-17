@@ -11,7 +11,7 @@ namespace Kafka.Messaging
     {
         public static void AddProducer<TMessage>(this IServiceCollection serviceCollection, IConfiguration configuration)
         {
-            string configName = typeof(TMessage).Name;
+            string configName = GetConfigName(typeof(TMessage));
             var section = configuration.GetSection($"Kafka:{configName}");
 
             serviceCollection.Configure<KafkaSettings>(configName, section);
@@ -21,13 +21,23 @@ namespace Kafka.Messaging
         public static void AddConsumer<TMessage, THandler>(this IServiceCollection serviceCollection, IConfiguration configuration)
             where THandler : class, IMessageHandler<TMessage>
         {
-            string configName = typeof(TMessage).Name;
+            string configName = GetConfigName(typeof(TMessage));
             var section = configuration.GetSection($"Kafka:{configName}");
 
             serviceCollection.Configure<KafkaSettings>(configName, section);
-
             serviceCollection.AddHostedService<KafkaConsumer<TMessage>>();
             serviceCollection.AddScoped<IMessageHandler<TMessage>, THandler>();
+        }
+
+        private static string GetConfigName(Type type)
+        {
+            if (type.IsGenericType)
+            {
+                var genericBaseName = type.Name.Split('`')[0];
+                var argumentName = type.GetGenericArguments()[0].Name;
+                return $"{genericBaseName}_{argumentName}";
+            }
+            return type.Name;
         }
     }
 }

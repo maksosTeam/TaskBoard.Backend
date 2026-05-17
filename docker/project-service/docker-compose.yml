@@ -19,7 +19,10 @@ services:
         condition: service_healthy
     networks:
       - taskboard-network
-    
+    volumes:
+      - document-storage:/app/docs
+      - attachment-storage:/app/attchs
+
   project-db:
     container_name: swaga-project-db
     image: postgres:15-alpine
@@ -37,4 +40,8 @@ services:
 
 volumes:
   project-data:
+    external: false
+  document-storage:
+    external: false
+  attachment-storage:
     external: false
