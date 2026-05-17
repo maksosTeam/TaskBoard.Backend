@@ -21,6 +21,8 @@ namespace SharedLibrary.Auth
             this.httpContextAccessor = httpContextAccessor;
             this.blacklistService = blacklistService;
         }
+        
+        //TEST
 
         public int? GetCurrentUserId()
         {
