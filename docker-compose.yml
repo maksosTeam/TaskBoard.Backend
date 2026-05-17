@@ -3,7 +3,7 @@ include:
   - docker/project-service/docker-compose.yml
   - docker/analytics-service/docker-compose.yml
   - docker/gateway-service/docker-compose.yml
-  #- docker/kafka/docker-compose.yml
+  - docker/kafka/docker-compose.yml
   - docker/nginx/docker-compose.yml
 
 networks:
