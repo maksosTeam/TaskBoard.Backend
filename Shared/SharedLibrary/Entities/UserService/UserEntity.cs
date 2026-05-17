@@ -1,11 +1,4 @@
-﻿using SharedLibrary.Entities.ProjectService;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace SharedLibrary.Entities.UserService
+﻿namespace SharedLibrary.Entities.UserService
 {
     public class UserEntity
     {
