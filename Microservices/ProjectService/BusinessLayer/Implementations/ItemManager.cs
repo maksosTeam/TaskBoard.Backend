@@ -65,14 +65,21 @@ public class ItemManager(
             }
         }
 
-        // Пакетный сбор данных пользователей. 
-        // Если твой userRepository поддерживает GetUsersByIdsAsync(IEnumerable<int> ids) — лучше переписать на него!
-        var cache = new Dictionary<int, string>();
-        foreach (var id in userIds)
+        var tasks = userIds.Select(async id =>
         {
             var user = await userRepository.GetUserAsync(id);
-            if (user != null)
-                cache[id] = user.Username;
+            return new { Id = id, User = user };
+        });
+
+        var results = await Task.WhenAll(tasks);
+
+        var cache = new Dictionary<int, string>();
+        foreach (var res in results)
+        {
+            if (res.User != null)
+            {
+                cache[res.Id] = res.User.Username;
+            }
         }
 
         return entityList.Select(x => ItemMapper.ToModel(x, cache)!).ToList();
