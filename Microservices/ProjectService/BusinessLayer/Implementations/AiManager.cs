@@ -49,7 +49,7 @@ public class AiManager(HttpClient httpClient, IConfiguration configuration) : IA
 
         using var request = new HttpRequestMessage(HttpMethod.Post, Url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
-        request.Headers.Add("HTTP-Referer", "http://localhost:5000"); // Замените на ваш актуальный хост, если нужно
+        request.Headers.Add("HTTP-Referer", "https://project-domain.ru/"); 
         request.Content = JsonContent.Create(requestBody);
 
         var response = await httpClient.SendAsync(request);
