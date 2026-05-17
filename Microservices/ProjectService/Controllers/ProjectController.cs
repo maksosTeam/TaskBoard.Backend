@@ -372,4 +372,21 @@ public class ProjectController : ControllerBase
             return BadRequest(ex.Message);
         }
     }
+
+    /// <summary>
+    ///    Получение пользователей в проекте.
+    /// </summary>
+    [HttpGet("get-users-in-project/{projectId}")]
+    public async Task<IActionResult> GetUsersInProject([FromRoute] int projectId)
+    {
+        try
+        {
+            var result = await _projectManager.GetUsersInProject(projectId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
 }

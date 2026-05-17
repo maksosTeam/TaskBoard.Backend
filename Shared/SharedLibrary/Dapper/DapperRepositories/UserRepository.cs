@@ -25,7 +25,20 @@ namespace SharedLibrary.Dapper.DapperRepositories
             var result = await DapperOperations.QueryAsync<UserModel>(query, new { Email = email }, Connection);
             return result.FirstOrDefault();
         }
-    }
 
+        public async Task<IEnumerable<UserModel>> GetUsersByIdsAsync(IEnumerable<int> ids)
+        {
+            if (ids == null || !ids.Any())
+            {
+                return Enumerable.Empty<UserModel>();
+            }
+
+            var query = "SELECT * FROM \"Users\" WHERE \"Id\" IN @Ids";
+
+            var result = await DapperOperations
+                .QueryAsync<UserModel>(query, new { Ids = ids }, Connection);
     
+            return result;
+        }
+    }
 }

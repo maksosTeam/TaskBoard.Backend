@@ -227,4 +227,39 @@ public class ProjectManager(
 
         throw new NotAuthorizedException();
     }
+
+    public async Task<ICollection<GetUsersInProjectResponse>> GetUsersInProject(int projectId)
+    {
+        var currentUserId = auth.GetCurrentUserId();
+
+        var project = await projectRepository.GetByIdAsync(projectId);
+
+        if (project is null)
+            throw new ProjectNotFoundException();
+        var isCurrentUserInProject =
+            await userProjectManager.IsUserInProjectAsync((int)currentUserId!, project.Id);
+        
+        if (!isCurrentUserInProject)
+            throw new NotAuthorizedException();
+
+        var users = (await userRepository
+            .GetUsersByIdsAsync(project.UserProjects.Select(x => x.UserId)))
+            .ToList();
+            
+
+        var result = new List<GetUsersInProjectResponse>();
+        var userInProjects = project.UserProjects.ToList();
+        for (var i = 0; i < userInProjects.Count; i++)
+        {
+            var userInfo = users[i];
+            result.Add(new GetUsersInProjectResponse(
+                UserId: userInfo.Id, 
+                UserName: userInfo.Username, 
+                ImagePath: userInfo.ImagePath, 
+                Email: userInfo.Email, 
+                Role: userInProjects[i].Role.Role));
+        }
+
+        return result;
+    }
 }
