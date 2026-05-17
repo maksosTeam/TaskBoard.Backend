@@ -9,35 +9,36 @@ namespace Kafka.Messaging
 {
     public static class Extensions
     {
-        public static void AddProducer<TMessage>(this IServiceCollection serviceCollection, IConfiguration configuration)
+        public static IServiceCollection AddProducer<TMessage>(this IServiceCollection services, IConfiguration configuration)
         {
-            string configName = GetConfigName(typeof(TMessage));
-            var section = configuration.GetSection($"Kafka:{configName}");
+            var configName = GetConfigName(typeof(TMessage));
 
-            serviceCollection.Configure<KafkaSettings>(configName, section);
-            serviceCollection.AddSingleton<IKafkaProducer<TMessage>, KafkaProducer<TMessage>>();
+            services.Configure<KafkaSettings>(configName, configuration.GetSection(configName));
+
+            services.AddSingleton<IKafkaProducer<TMessage>, KafkaProducer<TMessage>>();
+            return services;
         }
 
         public static void AddConsumer<TMessage, THandler>(this IServiceCollection serviceCollection, IConfiguration configuration)
             where THandler : class, IMessageHandler<TMessage>
         {
             string configName = GetConfigName(typeof(TMessage));
-            var section = configuration.GetSection($"Kafka:{configName}");
+
+            var section = configuration.GetSection(configName);
 
             serviceCollection.Configure<KafkaSettings>(configName, section);
             serviceCollection.AddHostedService<KafkaConsumer<TMessage>>();
             serviceCollection.AddScoped<IMessageHandler<TMessage>, THandler>();
         }
 
-        private static string GetConfigName(Type type)
+        public static string GetConfigName(Type type)
         {
-            if (type.IsGenericType)
-            {
-                var genericBaseName = type.Name.Split('`')[0];
-                var argumentName = type.GetGenericArguments()[0].Name;
-                return $"{genericBaseName}_{argumentName}";
-            }
-            return type.Name;
+            if (!type.IsGenericType)
+                return type.Name;
+
+            var baseName = type.Name.Split('`')[0];
+            var genericArgs = string.Join("_", type.GetGenericArguments().Select(t => t.Name.Replace("`", "")));
+            return $"{baseName}_{genericArgs}";
         }
     }
 }
