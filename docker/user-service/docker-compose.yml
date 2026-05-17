@@ -13,8 +13,6 @@ services:
     restart: always
     ports:
       - 5003:5003
-    volumes:
-      - ./avatars_data:/avatars
     depends_on:
       user-db:
         condition: service_healthy
