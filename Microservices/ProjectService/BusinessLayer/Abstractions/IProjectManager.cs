@@ -20,5 +20,6 @@ namespace ProjectService.BusinessLayer.Abstractions
         Task<ProjectModel> UpdateAsync(ProjectModel project);
         Task DeleteAsync(int id);
         Task<TasksState> GetTasksStateAsync(int projectId);
+        Task<ICollection<GetUsersInProjectResponse>> GetUsersInProject(int projectId);
     }
 }
