@@ -389,4 +389,27 @@ public class ProjectController : ControllerBase
             return BadRequest(ex.Message);
         }
     }
+    
+    [HttpGet("documents/{fileName}")]
+    public async Task<IActionResult> DownloadDocument(string fileName)
+    {
+        var docPath = Environment.GetEnvironmentVariable("DOCUMENT_STORAGE_PATH");
+        if (string.IsNullOrEmpty(docPath))
+            return NotFound("Путь к хранилищу не настроен");
+
+        // 3. Собираем полный путь к файлу на диске
+        var filePath = Path.Combine(docPath, fileName);
+
+        // Проверяем, существует ли файл физически
+        if (!System.IO.File.Exists(filePath))
+            return NotFound("Файл не найден на сервере");
+
+        // 4. Определяем контент-тип (MIME-тип) файла
+        // Для простоты можно использовать "application/octet-stream" (принудительное скачивание)
+        // Либо настроить FileExtensionContentTypeProvider, чтобы картинки открывались в браузере
+        var contentType = "application/octet-stream"; 
+
+        // Возвращаем файл пользователю
+        return PhysicalFile(filePath, contentType, fileName);
+    }
 }

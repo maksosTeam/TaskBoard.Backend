@@ -15,6 +15,7 @@ public interface IItemManager
 
     public Task<int> UpdateAsync(ItemModel item, CancellationToken token, string message, string oldValue, string newValue,
         string fieldName,
+        int botId = -1,
         TaskEventType eventType = TaskEventType.Updated);
     public Task<ItemModel> GetByTitle(string title);
     public Task Delete(int id);

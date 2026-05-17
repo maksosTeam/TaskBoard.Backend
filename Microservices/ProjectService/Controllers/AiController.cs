@@ -15,6 +15,7 @@ public class AiController(IAiManager aiManager) : ControllerBase
     [HttpPost("create")]
     public async Task<IActionResult> CreateMessage(string text, string mode = "paraphrase")
     {
+        
         var result = await aiManager.ProcessUserText(text);
         return Ok(result);
     }

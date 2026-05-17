@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.Reflection;
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using ProjectService.BusinessLayer.Abstractions;
 using ProjectService.Models;
 using SharedLibrary.Models;
@@ -231,21 +233,58 @@ public class ItemController(IItemManager itemManager) : ControllerBase
     }
 
     /// <summary>
-    ///     Изменение параметров задачи.
+    ///     Частичное обновление параметров задачи.
     /// </summary>
-    /// <remarks>
-    ///     Заменяет все параметры задачи на новые, кроме ID.
-    /// </remarks>
-    /// <param name="itemModel">Модель задачи с изменёнными параметрами</param>
-    [HttpPost("change-params")]
-    public async Task<IActionResult> ChangeParams([FromBody] ItemModel itemModel, CancellationToken cancellationToken)
+    /// <param name="id">ID обновляемой задачи</param>
+    /// <param name="patchData">Словарь с измененными полями (например, { "Description": "123" })</param>
+    [HttpPatch("change-params/{id:int}")]
+    public async Task<IActionResult> PatchParams(int id, [FromBody] Dictionary<string, object> patchData,
+        CancellationToken cancellationToken)
     {
+        if (patchData == null || !patchData.Any()) return BadRequest("Не переданы поля для изменения.");
+
         try
         {
-            var oldItemModel = await itemManager.GetByIdAsync(itemModel.Id);
+            var itemModel = await itemManager.GetByIdAsync(id);
+            if (itemModel == null) return NotFound($"Задача с ID {id} не найдена.");
+
+            var oldStateLog = itemModel.ToString();
+
+            var modelType = typeof(ItemModel);
+
+            foreach (var keyValuePair in patchData)
+            {
+                var property = modelType.GetProperty(keyValuePair.Key,
+                    BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+
+                if (property == null || string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!property.CanWrite) continue;
+
+                var rawValue = keyValuePair.Value;
+                object convertedValue = null;
+
+                if (rawValue != null)
+                {
+                    var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+                    if (rawValue is JsonElement jsonElement)
+                        // Десериализуем JsonElement напрямую в тип свойства
+                        convertedValue = JsonSerializer.Deserialize(jsonElement.GetRawText(), targetType);
+                    else
+                        convertedValue = Convert.ChangeType(rawValue, targetType);
+                }
+
+                property.SetValue(itemModel, convertedValue);
+            }
+
             var newItemModel = await itemManager.UpdateAsync(itemModel, cancellationToken,
-                $"У задачи {itemModel.Title} поменяли параметры", oldItemModel.ToString(), 
-                itemModel.ToString(), "Item"); //TODO аналогично придумать как правильно передавать стрингу
+                $"У задачи {itemModel.Title} частично изменены параметры",
+                oldStateLog,
+                itemModel.ToString(),
+                "Item");
+
             return Ok(newItemModel);
         }
         catch (Exception ex)

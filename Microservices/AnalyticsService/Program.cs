@@ -1,25 +1,19 @@
-using System.Security.Claims;
-using System.Text;
-using AnalyticsService.BusinessLayer;
-using AnalyticsService.BusinessLayer.Abstractions;
-using AnalyticsService.BusinessLayer.Implementations;
-using AnalyticsService.DataLayer;
-using AnalyticsService.DataLayer.Abstractions;
-using AnalyticsService.DataLayer.Implementations;
 using AnalyticsService.Initializers;
-using AnalyticsService.Kafka;
-using AnalyticsService.Kafka.Handlers;
 using DotNetEnv;
-using Kafka.Messaging;
-using Kafka.Messaging.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using SharedLibrary.Dapper.DapperRepositories;
-using SharedLibrary.Dapper.DapperRepositories.Abstractions;
 using SharedLibrary.Middleware;
-using SharedLibrary.Models;
-using SharedLibrary.ProjectModels;
+using System.Security.Claims;
+using System.Text;
+using AnalyticsService.BusinessLayer.Abstractions;
+using AnalyticsService.BusinessLayer.Implementations;
+using AnalyticsService.DataLayer.Abstractions;
+using AnalyticsService.DataLayer.Implementations;
+using AnalyticsService.BusinessLayer;
+using SharedLibrary.Dapper.DapperRepositories.Abstractions;
+using SharedLibrary.Dapper.DapperRepositories;
+using AnalyticsService.DataLayer;
 
 namespace AnalyticsService;
 
@@ -75,30 +69,12 @@ internal class Program
         services.AddTransient<ForwardAccessTokenHandler>();
         services.AddScoped<ITaskManager, TaskManager>();
         services.AddScoped<ITaskHistoryRepository, TaskHistoryRepository>();
-
-        //services
-        //    .AddHttpClient<ITaskManager, TaskManager>(client => client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("PROJECT_SERVICE") + "/item/"))
-        //    .AddHttpMessageHandler<ForwardAccessTokenHandler>();
-        //services
-        //    .AddHttpClient<IProjectManager, ProjectManager>(client =>client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("PROJECT_SERVICE")!))
-        //    .AddHttpMessageHandler<ForwardAccessTokenHandler>();
-
-        services.AddScoped<IProjectManager, ProjectManager>();
-
-        // Трекер для одиночных задач
-        services.AddSingleton<KafkaResponseTracker<ItemModel>>();
-        services.AddSingleton(typeof(KafkaResponseTracker<>));
-        // Продьюсеры для отправки запросов
-        services.AddProducer<RpcMessage<ProjectIdRequest>>(configuration);
-        services.AddProducer<RpcMessage<ItemIdRequest>>(configuration);
-        services.AddProducer<RpcMessage<GetProjectItemsRequest>>(configuration);
-        services.AddProducer<RpcMessage<GetProjectByIdRequest>>(configuration);
-        services.AddProducer<RpcMessage<ItemIdRequest>>(configuration);
-        // Консьюмеры
-        services.AddConsumer<RpcMessage<IEnumerable<ItemModel>>, GetItemsResponseHandler>(configuration);
-        services.AddConsumer<RpcMessage<ProjectModel>, GetProjectResponseHandler>(configuration);
-        services.AddConsumer<RpcMessage<ItemModel>, GetItemResponseHandler>(configuration);
-        services.AddConsumer<RpcMessage<SharedLibrary.Models.AnalyticModels.TaskHistoryModel>, TaskHistoryCommandHandler>(configuration);
+        services
+            .AddHttpClient<ITaskManager, TaskManager>(client => client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("PROJECT_SERVICE") + "/item/"))
+            .AddHttpMessageHandler<ForwardAccessTokenHandler>();
+        services
+            .AddHttpClient<IProjectManager, ProjectManager>(client =>client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("PROJECT_SERVICE")!))
+            .AddHttpMessageHandler<ForwardAccessTokenHandler>();
         services.AddControllers();
         services.AddEndpointsApiExplorer();
 
