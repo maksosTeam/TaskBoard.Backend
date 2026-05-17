@@ -14,7 +14,7 @@ namespace UserService.BusinessLayer
                 Email = userEntity.Email,
                 Password = userEntity.Password,
                 Salt = userEntity.Salt,
-                ImagePath = userEntity.ImagePath
+                ImagePath = userEntity.ImagePath ?? string.Empty
             };
         }
 
@@ -26,7 +26,7 @@ namespace UserService.BusinessLayer
                 Email = userEntity.Email,
                 Password = userEntity.Password,
                 Salt = userEntity.Salt,
-                ImagePath = userEntity.ImagePath
+                ImagePath = userEntity.ImagePath ?? string.Empty
             };
         }
     }
