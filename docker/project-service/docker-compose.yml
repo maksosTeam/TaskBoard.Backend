@@ -20,8 +20,8 @@ services:
     networks:
       - taskboard-network
     volumes:
-      - document-storage:/app/docs
-      - attachment-storage:/app/attchs
+      - document-storage:/documents
+      - attachment-storage:/attachments
 
   project-db:
     container_name: swaga-project-db
