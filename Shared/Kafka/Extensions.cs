@@ -1,9 +1,8 @@
 ﻿using Kafka.Messaging.Services.Abstractions;
-using Kafka.Messaging.Settings;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Configuration;
 using Kafka.Messaging.Services.Implementations;
-using Microsoft.Extensions.Hosting;
+using Kafka.Messaging.Settings;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Kafka.Messaging
 {
@@ -13,7 +12,8 @@ namespace Kafka.Messaging
         {
             var configName = GetConfigName(typeof(TMessage));
 
-            services.Configure<KafkaSettings>(configName, configuration.GetSection(configName));
+            // ДОБАВЛЕНО: $"Kafka:{configName}" - потому что в .env у тебя префикс KAFKA__
+            services.Configure<KafkaSettings>(configName, configuration.GetSection($"Kafka:{configName}"));
 
             services.AddSingleton<IKafkaProducer<TMessage>, KafkaProducer<TMessage>>();
             return services;
@@ -24,7 +24,7 @@ namespace Kafka.Messaging
         {
             string configName = GetConfigName(typeof(TMessage));
 
-            var section = configuration.GetSection(configName);
+            var section = configuration.GetSection($"Kafka:{configName}");
 
             serviceCollection.Configure<KafkaSettings>(configName, section);
             serviceCollection.AddHostedService<KafkaConsumer<TMessage>>();

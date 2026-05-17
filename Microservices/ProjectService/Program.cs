@@ -86,7 +86,6 @@ internal class Program
     private static void ConfigureServices(IServiceCollection services, IConfigurationManager configuration)
     {
         services.Configure<MailSettings>(configuration.GetSection("MailSettings"));
-        services.Configure<KafkaSettings>(configuration.GetSection("Kafka:NotificationTask"));
         services.AddTransient<ForwardAccessTokenHandler>();
         services.AddScoped<IEmailSender, EmailSender>();
         services.AddScoped<IMailService, MailService>();
@@ -178,7 +177,7 @@ internal class Program
 
         // Чистим старый дубль и регистрируем через твой метод расширения
         services.AddConsumer<TaskEventMessage, TaskEventMessageHandler>(configuration);
-        services.AddProducer<TaskEventMessage>(configuration.GetSection("Kafka:NotificationTask"));
+        services.AddProducer<TaskEventMessage>(configuration);
 
         // 1. КАНАЛЫ ЗАПРОСОВ
         services.AddConsumer<RpcMessage<GetProjectItemsRequest>, GetProjectItemsRequestHandler>(configuration);
