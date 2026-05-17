@@ -26,6 +26,8 @@ public class GithubController : ControllerBase
         [FromHeader(Name = "X-Hub-Signature-256")] string signature,
         [FromBody] GitHubWebhookPayload payload)
     {
+        Console.WriteLine("START WEBHOOK");
+
         if (string.IsNullOrEmpty(signature))
         {
             return Unauthorized("Missing signature");
